@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+
+{% block title %}Scan Report{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-file-earmark-text"></i> Scan Report: {{ scan_run.task.name }}</h1>
+    <div>
+        <a href="{{ url_for('reports.report_pdf', run_id=scan_run.id) }}" class="btn btn-danger">
+            <i class="bi bi-file-pdf"></i> Export PDF
+        </a>
+        {% if report.xml_report_path %}
+        <a href="{{ url_for('reports.raw_xml', run_id=scan_run.id) }}" class="btn btn-secondary">
+            <i class="bi bi-file-earmark-code"></i> Download XML
+        </a>
+        {% endif %}
+        {% if report.normal_report_path %}
+        <a href="{{ url_for('reports.raw_text', run_id=scan_run.id) }}" class="btn btn-info">
+            <i class="bi bi-file-earmark-text"></i> Download Text
+        </a>
+        {% endif %}
+        <a href="{{ url_for('tasks.view', id=scan_run.task.id) }}" class="btn btn-primary">
+            <i class="bi bi-arrow-left"></i> Back to Task
+        </a>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Scan Summary</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Scan ID:</div>
+                            <div class="col-md-8">{{ scan_run.id }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Task:</div>
+                            <div class="col-md-8">{{ scan_run.task.name }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Started:</div>
+                            <div class="col-md-8">{{ scan_run.started_at|format_datetime('%Y-%m-%d %H:%M:%S') }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Completed:</div>
+                            <div class="col-md-8">{{ scan_run.completed_at|format_datetime('%Y-%m-%d %H:%M:%S') if scan_run.completed_at else 'N/A' }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        {% if summary %}
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Nmap Version:</div>
+                            <div class="col-md-8">{{ summary.version }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Arguments:</div>
+                            <div class="col-md-8"><code>{{ summary.args }}</code></div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Total Hosts:</div>
+                            <div class="col-md-8">{{ summary.hosts_total }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Hosts Up:</div>
+                            <div class="col-md-8">{{ summary.hosts_up }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Hosts Down:</div>
+                            <div class="col-md-8">{{ summary.hosts_down }}</div>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> No summary information available.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Host Results</h5>
+            </div>
+            <div class="card-body">
+                {% if hosts %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>IP Address</th>
+                                <th>Hostname</th>
+                                <th>Status</th>
+                                <th>Open Ports</th>
+                                <th>OS Detection</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for host in hosts %}
+                            <tr>
+                                <td>{{ host.ip_address }}</td>
+                                <td>{{ host.hostname or 'N/A' }}</td>
+                                <td>
+                                    {% if host.status == 'up' %}
+                                    <span class="badge bg-success">Up</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Down</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ host.ports.filter_by(state='open').count() }}</td>
+                                <td>
+                                    {% if host.os_info %}
+                                    {% set os = host.os_info|from_json %}
+                                    {{ os.name }} ({{ os.accuracy }}%)
+                                    {% else %}
+                                    N/A
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('reports.view_host', run_id=scan_run.id, host_id=host.id) }}" class="btn btn-sm btn-primary">
+                                        <i class="bi bi-eye"></i> Details
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> No host results found.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Add custom filter to parse JSON
+    document.addEventListener('DOMContentLoaded', function() {
+        // This is a client-side workaround since we can't add Jinja filters here
+        // In a real application, you would add a custom Jinja filter in the Flask app
+        const jsonElements = document.querySelectorAll('[data-json]');
+        jsonElements.forEach(function(element) {
+            try {
+                const jsonData = JSON.parse(element.dataset.json);
+                element.textContent = jsonData.name + ' (' + jsonData.accuracy + '%)';
+            } catch (e) {
+                element.textContent = 'N/A';
+            }
+        });
+    });
+</script>
+{% endblock %}

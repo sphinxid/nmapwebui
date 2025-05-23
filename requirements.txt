@@ -1,0 +1,21 @@
+Flask==2.3.3
+Flask-Login==0.6.2
+Flask-WTF==1.1.1
+Flask-Migrate==4.0.4
+Flask-SQLAlchemy==3.0.5
+SQLAlchemy==2.0.20
+Werkzeug==2.3.7
+celery==5.3.1
+redis==4.6.0
+python-dotenv==1.0.0
+bcrypt==4.0.1
+APScheduler==3.10.1
+email-validator==2.0.0
+python-nmap==0.7.1
+gunicorn==21.2.0
+psutil==7.0.0
+
+# PDF Export functionality
+# Requires system dependencies: libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libpangocairo-1.0-0
+# Install on Ubuntu/Debian: sudo apt-get install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libpangocairo-1.0-0
+WeasyPrint==60.1

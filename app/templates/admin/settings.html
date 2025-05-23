@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+
+{% block title %}System Settings{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1><i class="bi bi-gear"></i> System Settings</h1>
+        <p class="lead">Configure global system settings for the application.</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-sliders"></i> Application Settings</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin.system_settings') }}">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="mb-3">
+                        {{ form.max_concurrent_tasks.label(class="form-label") }}
+                        {{ form.max_concurrent_tasks(class="form-control") }}
+                        {% if form.max_concurrent_tasks.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.max_concurrent_tasks.errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-text">
+                            {{ form.max_concurrent_tasks.description }}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.max_reports_per_task.label(class="form-label") }}
+                        {{ form.max_reports_per_task(class="form-control") }}
+                        {% if form.max_reports_per_task.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.max_reports_per_task.errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-text">
+                            {{ form.max_reports_per_task.description }}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.pagination_rows.label(class="form-label") }}
+                        {{ form.pagination_rows(class="form-control") }}
+                        {% if form.pagination_rows.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.pagination_rows.errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-text">
+                            {{ form.pagination_rows.description }}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.submit(class="btn btn-primary") }}
+                        <a href="{{ url_for('admin.index') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% block title %}Create Target Group{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1><i class="bi bi-bullseye"></i> Create Target Group</h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('targets.create') }}">
+                    {{ form.hidden_tag() }}
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            {{ form.name.label(class="form-label") }}
+                            {{ form.name(class="form-control") }}
+                            {% for error in form.name.errors %}
+                                <div class="text-danger">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            {{ form.description.label(class="form-label") }}
+                            {{ form.description(class="form-control", rows=3) }}
+                            {% for error in form.description.errors %}
+                                <div class="text-danger">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            {{ form.targets.label(class="form-label") }}
+                            <div class="alert alert-info">
+                                <p class="mb-1"><strong>Supported formats (one per line):</strong></p>
+                                <ul class="mb-0">
+                                    <li>Individual IP addresses (e.g., 192.168.1.10)</li>
+                                    <li>CIDR subnets (e.g., 192.168.1.0/24)</li>
+                                    <li>Hostnames (e.g., server1.example.com)</li>
+                                </ul>
+                            </div>
+                            {{ form.targets(class="form-control", rows=10) }}
+                            {% for error in form.targets.errors %}
+                                <div class="text-danger">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <a href="{{ url_for('targets.index') }}" class="btn btn-secondary">Cancel</a>
+                            {{ form.submit(class="btn btn-primary") }}
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

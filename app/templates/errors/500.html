@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+
+{% block title %}Server Error{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6">
+        <div class="card shadow-sm text-center">
+            <div class="card-body">
+                <h1 class="display-1 text-danger"><i class="bi bi-x-octagon"></i></h1>
+                <h2 class="mb-4">500 - Server Error</h2>
+                <p class="lead">Something went wrong on our end. Please try again later.</p>
+                <a href="{{ url_for('main.index') }}" class="btn btn-primary mt-3">
+                    <i class="bi bi-house"></i> Go to Home
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

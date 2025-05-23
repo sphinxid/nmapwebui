@@ -1,0 +1,209 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if scan_task.is_scheduled %}Edit Schedule{% else %}Schedule Scan Task{% endif %}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        {% if scan_task.is_scheduled %}
+        <h1><i class="bi bi-calendar-check"></i> Edit Schedule: {{ scan_task.name }}</h1>
+        {% else %}
+        <h1><i class="bi bi-calendar-plus"></i> Schedule Scan Task: {{ scan_task.name }}</h1>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="alert alert-info">
+            <i class="bi bi-clock"></i> <strong>Timezone Information:</strong> All times are in your local timezone ({{ timezone_display }}). The system will automatically convert these times to UTC for scheduling.
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('tasks.schedule', id=scan_task.id) }}">
+                    {{ form.hidden_tag() }}
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            {{ form.schedule_type.label(class="form-label") }}
+                            {{ form.schedule_type(class="form-select", id="scheduleTypeSelect") }}
+                            {% for error in form.schedule_type.errors %}
+                                <div class="text-danger">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.current_timezone.label(class="form-label") }}
+                            {{ form.current_timezone(class="form-control", readonly=true) }}
+                            <small class="form-text text-muted">To change your timezone, go to your <a href="{{ url_for('profile.index') }}">profile settings</a>.</small>
+                        </div>
+                    </div>
+                    
+                    <!-- Daily Schedule Options -->
+                    <div id="dailyOptions" class="schedule-options">
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                {{ form.hour.label(class="form-label") }}
+                                {{ form.hour(class="form-control") }}
+                                {% for error in form.hour.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="col-md-3">
+                                {{ form.minute.label(class="form-label") }}
+                                {{ form.minute(class="form-control") }}
+                                {% for error in form.minute.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Weekly Schedule Options -->
+                    <div id="weeklyOptions" class="schedule-options" style="display: none;">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                {{ form.day_of_week.label(class="form-label") }}
+                                {{ form.day_of_week(class="form-select") }}
+                                {% for error in form.day_of_week.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="col-md-3">
+                                {{ form.hour.label(class="form-label") }}
+                                {{ form.hour(class="form-control") }}
+                                {% for error in form.hour.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="col-md-3">
+                                {{ form.minute.label(class="form-label") }}
+                                {{ form.minute(class="form-control") }}
+                                {% for error in form.minute.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Monthly Schedule Options -->
+                    <div id="monthlyOptions" class="schedule-options" style="display: none;">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                {{ form.day.label(class="form-label") }}
+                                {{ form.day(class="form-control") }}
+                                {% for error in form.day.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="col-md-3">
+                                {{ form.hour.label(class="form-label") }}
+                                {{ form.hour(class="form-control") }}
+                                {% for error in form.hour.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="col-md-3">
+                                {{ form.minute.label(class="form-label") }}
+                                {{ form.minute(class="form-control") }}
+                                {% for error in form.minute.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Interval Schedule Options -->
+                    <div id="intervalOptions" class="schedule-options" style="display: none;">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                {{ form.hours.label(class="form-label") }}
+                                {{ form.hours(class="form-control") }}
+                                {% for error in form.hours.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-12">
+                            <a href="{{ url_for('tasks.view', id=scan_task.id) }}" class="btn btn-secondary">Cancel</a>
+                            {% if scan_task.is_scheduled %}
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Update Schedule</button>
+                            <a href="#" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#unscheduleModal"><i class="bi bi-calendar-x"></i> Unschedule</a>
+                            {% else %}
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-calendar-plus"></i> Schedule</button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Unschedule Confirmation Modal -->
+{% if scan_task.is_scheduled %}
+<div class="modal fade" id="unscheduleModal" tabindex="-1" aria-labelledby="unscheduleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="unscheduleModalLabel">Confirm Unschedule</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to remove the schedule for <strong>{{ scan_task.name }}</strong>?
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form action="{{ url_for('tasks.unschedule', id=scan_task.id) }}" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger">Unschedule</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const scheduleTypeSelect = document.getElementById('scheduleTypeSelect');
+        const dailyOptions = document.getElementById('dailyOptions');
+        const weeklyOptions = document.getElementById('weeklyOptions');
+        const monthlyOptions = document.getElementById('monthlyOptions');
+        const intervalOptions = document.getElementById('intervalOptions');
+        
+        // Show/hide schedule options based on schedule type selection
+        function toggleScheduleOptions() {
+            // Hide all options first
+            dailyOptions.style.display = 'none';
+            weeklyOptions.style.display = 'none';
+            monthlyOptions.style.display = 'none';
+            intervalOptions.style.display = 'none';
+            
+            // Show options based on selected schedule type
+            if (scheduleTypeSelect.value === 'daily') {
+                dailyOptions.style.display = 'block';
+            } else if (scheduleTypeSelect.value === 'weekly') {
+                weeklyOptions.style.display = 'block';
+            } else if (scheduleTypeSelect.value === 'monthly') {
+                monthlyOptions.style.display = 'block';
+            } else if (scheduleTypeSelect.value === 'interval') {
+                intervalOptions.style.display = 'block';
+            }
+        }
+        
+        scheduleTypeSelect.addEventListener('change', toggleScheduleOptions);
+        
+        // Initial check
+        toggleScheduleOptions();
+    });
+</script>
+{% endblock %}

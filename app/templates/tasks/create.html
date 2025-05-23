@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+
+{% block title %}Create Scan Task{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1><i class="bi bi-list-task"></i> Create Scan Task</h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('tasks.create') }}">
+                    {{ form.hidden_tag() }}
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            {{ form.name.label(class="form-label") }}
+                            {{ form.name(class="form-control") }}
+                            {% for error in form.name.errors %}
+                                <div class="text-danger">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            {{ form.description.label(class="form-label") }}
+                            {{ form.description(class="form-control", rows=3) }}
+                            {% for error in form.description.errors %}
+                                <div class="text-danger">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            {{ form.target_groups.label(class="form-label") }}
+                            {{ form.target_groups(class="form-select", size=5, multiple=true) }}
+                            {% for error in form.target_groups.errors %}
+                                <div class="text-danger">{{ error }}</div>
+                            {% endfor %}
+                            <div class="form-text">Hold Ctrl (Windows) or Command (Mac) to select multiple target groups.</div>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            {{ form.scan_profile.label(class="form-label") }}
+                            {{ form.scan_profile(class="form-select", id="scanProfileSelect") }}
+                            {% for error in form.scan_profile.errors %}
+                                <div class="text-danger">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="row mb-3" id="customArgsDiv" style="display: none;">
+                        <div class="col-md-12">
+                            {{ form.custom_args.label(class="form-label") }}
+                            {{ form.custom_args(class="form-control") }}
+                            {% for error in form.custom_args.errors %}
+                                <div class="text-danger">{{ error }}</div>
+                            {% endfor %}
+                            <div class="form-text">
+                                Enter custom Nmap arguments. For security reasons, certain characters and patterns are not allowed.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <h5>Report Settings</h5>
+                            <div class="form-check mb-2">
+                                {{ form.use_global_max_reports(class="form-check-input", id="useGlobalMaxReports") }}
+                                {{ form.use_global_max_reports.label(class="form-check-label") }}
+                                <div class="form-text">{{ form.use_global_max_reports.description }}</div>
+                            </div>
+                            <div id="maxReportsDiv" style="display: none;">
+                                {{ form.max_reports.label(class="form-label") }}
+                                {{ form.max_reports(class="form-control") }}
+                                {% for error in form.max_reports.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                                <div class="form-text">{{ form.max_reports.description }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <div class="form-check">
+                                {{ form.run_now(class="form-check-input") }}
+                                {{ form.run_now.label(class="form-check-label") }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <a href="{{ url_for('tasks.index') }}" class="btn btn-secondary">Cancel</a>
+                            {{ form.submit(class="btn btn-primary") }}
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const scanProfileSelect = document.getElementById('scanProfileSelect');
+        const customArgsDiv = document.getElementById('customArgsDiv');
+        const useGlobalMaxReports = document.getElementById('useGlobalMaxReports');
+        const maxReportsDiv = document.getElementById('maxReportsDiv');
+        
+        // Show/hide custom args field based on scan profile selection
+        function toggleCustomArgs() {
+            if (scanProfileSelect.value === 'custom') {
+                customArgsDiv.style.display = 'block';
+            } else {
+                customArgsDiv.style.display = 'none';
+            }
+        }
+        
+        // Show/hide max reports field based on checkbox
+        function toggleMaxReports() {
+            if (useGlobalMaxReports.checked) {
+                maxReportsDiv.style.display = 'none';
+            } else {
+                maxReportsDiv.style.display = 'block';
+            }
+        }
+        
+        scanProfileSelect.addEventListener('change', toggleCustomArgs);
+        useGlobalMaxReports.addEventListener('change', toggleMaxReports);
+        
+        // Initial check
+        toggleCustomArgs();
+        toggleMaxReports();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+
+{% block title %}Scan Tasks{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-list-task"></i> Scan Tasks</h1>
+    <a href="{{ url_for('tasks.create') }}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Create Scan Task
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        {% if scan_tasks %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Target Groups</th>
+                        <th>Scan Profile</th>
+                        <th>Schedule</th>
+                        <th>Last Run</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in scan_tasks %}
+                    <tr>
+                        <td>{{ task.name }}</td>
+                        <td>
+                            {% for group in task.target_groups %}
+                            <span class="badge bg-primary">{{ group.name }}</span>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {% if task.scan_profile == 'custom' %}
+                            <span class="badge bg-warning text-dark">Custom</span>
+                            {% else %}
+                            <span class="badge bg-info">{{ task.scan_profile.replace('_', ' ').title() }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if task.is_scheduled %}
+                            <span class="badge bg-success">
+                                {% if task.schedule_type == 'daily' %}
+                                Daily
+                                {% elif task.schedule_type == 'weekly' %}
+                                Weekly
+                                {% elif task.schedule_type == 'monthly' %}
+                                Monthly
+                                {% elif task.schedule_type == 'interval' %}
+                                Every {{ task.get_schedule_data().get('hours', 24) }}h
+                                {% endif %}
+                            </span>
+                            {% else %}
+                            <span class="badge bg-secondary">Not Scheduled</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if task.latest_run %}
+                                {{ task.latest_run.started_at|format_datetime('%Y-%m-%d %H:%M') }}
+                                {% if task.latest_run.status == 'completed' %}
+                                <span class="badge bg-success">Success</span>
+                                {% if task.open_ports_count > 0 %}
+                                <span class="badge bg-warning text-dark ms-1">{{ task.open_ports_count }} open ports</span>
+                                {% else %}
+                                <span class="badge bg-secondary ms-1">No open ports</span>
+                                {% endif %}
+                                {% elif task.latest_run.status == 'failed' %}
+                                <span class="badge bg-danger">Failed</span>
+                                {% elif task.latest_run.status == 'running' %}
+                                <span class="badge bg-primary">Running</span>
+                                {% elif task.latest_run.status == 'queued' %}
+                                <span class="badge bg-secondary">Queued</span>
+                                {% endif %}
+                            {% else %}
+                                Never
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <a href="{{ url_for('tasks.view', id=task.id) }}" class="btn btn-sm btn-info">
+                                    <i class="bi bi-eye"></i> View
+                                </a>
+                                <a href="{{ url_for('tasks.run', id=task.id) }}" class="btn btn-sm btn-success">
+                                    <i class="bi bi-play"></i> Run
+                                </a>
+                                <a href="{{ url_for('tasks.edit', id=task.id) }}" class="btn btn-sm btn-warning">
+                                    <i class="bi bi-pencil"></i> Edit
+                                </a>
+                                <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ task.id }}">
+                                    <i class="bi bi-trash"></i> Delete
+                                </button>
+                            </div>
+                            
+                            <!-- Delete Confirmation Modal -->
+                            <div class="modal fade" id="deleteModal{{ task.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ task.id }}" aria-hidden="true">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title" id="deleteModalLabel{{ task.id }}">Confirm Delete</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            Are you sure you want to delete the scan task <strong>{{ task.name }}</strong>?
+                                            This will also delete all scan reports associated with this task.
+                                            This action cannot be undone.
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                            <form action="{{ url_for('tasks.delete', id=task.id) }}" method="POST">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <button type="submit" class="btn btn-danger">Delete</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if pagination and pagination.total_pages > 1 %}
+        <div class="d-flex justify-content-between align-items-center mt-4">
+            <div>
+                <small class="text-muted">Showing {{ scan_tasks|length }} of {{ pagination.total_items }} tasks</small>
+            </div>
+            <nav aria-label="Page navigation">
+                <ul class="pagination">
+                    <!-- Previous page button -->
+                    <li class="page-item {{ 'disabled' if pagination.page == 1 else '' }}">
+                        <a class="page-link" href="{{ url_for('tasks.index', page=pagination.page-1) if pagination.page > 1 else '#' }}" aria-label="Previous">
+                            <span aria-hidden="true">&laquo;</span>
+                        </a>
+                    </li>
+                    
+                    <!-- Page numbers -->
+                    {% set start_page = [1, pagination.page - 2]|max %}
+                    {% set end_page = [start_page + 4, pagination.total_pages]|min %}
+                    {% set start_page = [end_page - 4, 1]|max %}
+                    
+                    {% for p in range(start_page, end_page + 1) %}
+                    <li class="page-item {{ 'active' if p == pagination.page else '' }}">
+                        <a class="page-link" href="{{ url_for('tasks.index', page=p) }}">{{ p }}</a>
+                    </li>
+                    {% endfor %}
+                    
+                    <!-- Next page button -->
+                    <li class="page-item {{ 'disabled' if pagination.page == pagination.total_pages else '' }}">
+                        <a class="page-link" href="{{ url_for('tasks.index', page=pagination.page+1) if pagination.page < pagination.total_pages else '#' }}" aria-label="Next">
+                            <span aria-hidden="true">&raquo;</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+        
+        {% else %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> No scan tasks found. 
+            <a href="{{ url_for('tasks.create') }}">Create your first scan task</a>.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

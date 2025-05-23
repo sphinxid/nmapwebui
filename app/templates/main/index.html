@@ -1,0 +1,302 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1><i class="bi bi-speedometer2"></i> Dashboard</h1>
+        <p class="lead">Welcome to NmapWebUI, {{ current_user.username }}!</p>
+    </div>
+</div>
+
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-bullseye"></i> Target Groups</h5>
+                <h2 class="display-4">{{ stats.total_targets }}</h2>
+                <p class="card-text">Total target groups</p>
+                <a href="{{ url_for('targets.index') }}" class="btn btn-light btn-sm">View All</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-list-task"></i> Scan Tasks</h5>
+                <h2 class="display-4">{{ stats.total_tasks }}</h2>
+                <p class="card-text">Total scan tasks</p>
+                <a href="{{ url_for('tasks.index') }}" class="btn btn-light btn-sm">View All</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-file-earmark-text"></i> Completed Scans</h5>
+                <h2 class="display-4">{{ stats.total_scans }}</h2>
+                <p class="card-text">Total scan runs</p>
+                <a href="{{ url_for('reports.index') }}" class="btn btn-light btn-sm">View Reports</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-dark">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-hourglass-split"></i> Active Scans</h5>
+                <h2 class="display-4">{{ stats.active_scans }}</h2>
+                <p class="card-text">Currently running</p>
+                <a href="{{ url_for('tasks.index') }}" class="btn btn-dark btn-sm">View Tasks</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Recent Scan Runs -->
+    <div class="col-md-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Recent Scan Runs</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_runs %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Task</th>
+                                <th>Status</th>
+                                <th>Started</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for run in recent_runs %}
+                            <tr id="dashboard-run-{{ run.id }}" class="{% if run.status in ['queued', 'running'] %}table-active{% endif %}">
+                                <td>{{ run.task.name }}</td>
+                                <td>
+                                    {% if run.status == 'queued' %}
+                                    <span class="badge bg-secondary">Queued</span>
+                                    {% elif run.status == 'running' %}
+                                    <span class="badge bg-primary">Running ({{ run.progress }}%)</span>
+                                    <div class="progress mt-1" style="height: 5px;">
+                                        <div class="progress-bar" role="progressbar" style="width: {{ run.progress }}%;" aria-valuenow="{{ run.progress }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                    {% elif run.status == 'completed' %}
+                                    <span class="badge bg-success">Completed</span>
+                                    {% elif run.status == 'failed' %}
+                                    <span class="badge bg-danger">Failed</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ run.started_at|format_datetime('%Y-%m-%d %H:%M') }}</td>
+                                <td>
+                                    {% if run.status == 'completed' and run.report %}
+                                    <a href="{{ url_for('reports.view', run_id=run.id) }}" class="btn btn-sm btn-primary">
+                                        <i class="bi bi-file-earmark-text"></i> View Report
+                                    </a>
+                                    {% else %}
+                                    <a href="{{ url_for('tasks.view', id=run.task.id) }}" class="btn btn-sm btn-secondary">
+                                        <i class="bi bi-eye"></i> View Task
+                                    </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">No recent scan runs.</p>
+                {% endif %}
+            </div>
+            <div class="card-footer text-end">
+                <a href="{{ url_for('reports.index') }}" class="btn btn-sm btn-outline-primary">View All Reports</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upcoming Scheduled Scans -->
+    <div class="col-md-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-calendar-event"></i> Scheduled Scans</h5>
+            </div>
+            <div class="card-body">
+                {% if scheduled_tasks %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Task</th>
+                                <th>Schedule</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for task in scheduled_tasks %}
+                            <tr>
+                                <td>{{ task.name }}</td>
+                                <td>
+                                    {% if task.schedule_type == 'daily' %}
+                                    Daily at {{ task.get_schedule_data().get('hour', 0) }}:{{ '%02d' % task.get_schedule_data().get('minute', 0) }} ({{ timezone_display }})
+                                    {% elif task.schedule_type == 'weekly' %}
+                                    Weekly on 
+                                    {% set days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] %}
+                                    {{ days[task.get_schedule_data().get('day_of_week', 0)] }} at {{ task.get_schedule_data().get('hour', 0) }}:{{ '%02d' % task.get_schedule_data().get('minute', 0) }} ({{ timezone_display }})
+                                    {% elif task.schedule_type == 'monthly' %}
+                                    Monthly on day {{ task.get_schedule_data().get('day', 1) }} at {{ task.get_schedule_data().get('hour', 0) }}:{{ '%02d' % task.get_schedule_data().get('minute', 0) }} ({{ timezone_display }})
+                                    {% elif task.schedule_type == 'interval' %}
+                                    Every {{ task.get_schedule_data().get('hours', 24) }} hours
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('tasks.view', id=task.id) }}" class="btn btn-sm btn-primary">
+                                        <i class="bi bi-eye"></i> View
+                                    </a>
+                                    <a href="{{ url_for('tasks.run', id=task.id) }}" class="btn btn-sm btn-success">
+                                        <i class="bi bi-play"></i> Run Now
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">No scheduled scans.</p>
+                {% endif %}
+            </div>
+            <div class="card-footer text-end">
+                <a href="{{ url_for('tasks.index') }}" class="btn btn-sm btn-outline-primary">View All Tasks</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scan Activity Chart -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-graph-up"></i> Scan Activity (Last 7 Days)</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="scanActivityChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Store the data from Jinja in JavaScript variables to avoid linting issues
+    const chartLabels = {{ daily_scan_data.labels | tojson }};
+    const chartData = {{ daily_scan_data.data | tojson }};
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Chart data:', chartData);
+        console.log('Chart labels:', chartLabels);
+        
+        try {
+            // Set up chart
+            const ctx = document.getElementById('scanActivityChart');
+            if (!ctx) {
+                console.error('Canvas element not found');
+                return;
+            }
+            
+            // Use real data only
+            const displayData = chartData;
+                
+            const scanActivityChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: chartLabels,
+                    datasets: [{
+                        label: 'Number of Scans',
+                        data: displayData,
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+            console.log('Chart initialized successfully');
+        } catch (error) {
+            console.error('Error initializing chart:', error);
+        }
+        
+        // Auto-refresh for running scans
+        const runningScans = document.querySelectorAll('tr[id^="dashboard-run-"].table-active');
+        
+        if (runningScans.length > 0) {
+            setInterval(function() {
+                runningScans.forEach(function(row) {
+                    const runId = row.id.replace('dashboard-run-', '');
+                    fetch(`{{ url_for('tasks.api_status', run_id=0) }}`.replace('0', runId))
+                        .then(response => response.json())
+                        .then(data => {
+                            // Update status
+                            const statusCell = row.querySelector('td:nth-child(2)');
+                            if (data.status === 'queued') {
+                                statusCell.innerHTML = '<span class="badge bg-secondary">Queued</span>';
+                            } else if (data.status === 'running') {
+                                statusCell.innerHTML = `
+                                    <span class="badge bg-primary">Running (${data.progress}%)</span>
+                                    <div class="progress mt-1" style="height: 5px;">
+                                        <div class="progress-bar" role="progressbar" style="width: ${data.progress}%" 
+                                             aria-valuenow="${data.progress}" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                `;
+                            } else if (data.status === 'completed') {
+                                statusCell.innerHTML = '<span class="badge bg-success">Completed</span>';
+                                row.classList.remove('table-active');
+                                
+                                // Update actions
+                                const actionsCell = row.querySelector('td:nth-child(4)');
+                                if (data.report) {
+                                    actionsCell.innerHTML = `
+                                        <a href="{{ url_for('reports.view', run_id=0) }}`.replace('0', runId) + `" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-file-earmark-text"></i> View Report
+                                        </a>
+                                    `;
+                                }
+                                
+                                // Reload page to get the latest data
+                                setTimeout(() => location.reload(), 2000);
+                            } else if (data.status === 'failed') {
+                                statusCell.innerHTML = '<span class="badge bg-danger">Failed</span>';
+                                row.classList.remove('table-active');
+                                
+                                // Reload page to get the latest data
+                                setTimeout(() => location.reload(), 2000);
+                            }
+                        });
+                });
+            }, 5000); // Check every 5 seconds
+        }
+    });
+</script>
+{% endblock %}

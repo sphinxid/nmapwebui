@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mb-4">User Profile</h1>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Profile Information</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-3 fw-bold">Username:</div>
+                <div class="col-md-9">{{ current_user.username }}</div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-3 fw-bold">Email:</div>
+                <div class="col-md-9">{{ current_user.email }}</div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-3 fw-bold">Role:</div>
+                <div class="col-md-9">{{ current_user.role|title }}</div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-3 fw-bold">Current Timezone:</div>
+                <div class="col-md-9">{{ timezone_display }}</div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-3 fw-bold">Current Time:</div>
+                <div class="col-md-9">{{ current_time.strftime('%Y-%m-%d %H:%M:%S %Z') }}</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Update Timezone</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('profile.index') }}">
+                {{ form.hidden_tag() }}
+                
+                <div class="mb-3">
+                    {{ form.timezone.label(class="form-label") }}
+                    {{ form.timezone(class="form-select") }}
+                    {% if form.timezone.errors %}
+                        <div class="invalid-feedback d-block">
+                            {% for error in form.timezone.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <div class="form-text">
+                        Select your preferred timezone. This will affect how dates and times are displayed throughout the application.
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    {{ form.submit(class="btn btn-primary") }}
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Change Password</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('profile.index') }}">
+                {{ form.hidden_tag() }}
+                {{ form.timezone(value=current_user.timezone, style="display: none;") }}
+                
+                <div class="mb-3">
+                    {{ form.current_password.label(class="form-label") }}
+                    {{ form.current_password(class="form-control") }}
+                    {% if form.current_password.errors %}
+                        <div class="invalid-feedback d-block">
+                            {% for error in form.current_password.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="mb-3">
+                    {{ form.new_password.label(class="form-label") }}
+                    {{ form.new_password(class="form-control") }}
+                    {% if form.new_password.errors %}
+                        <div class="invalid-feedback d-block">
+                            {% for error in form.new_password.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <div class="form-text">
+                        Password must be at least 8 characters long.
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    {{ form.confirm_password.label(class="form-label") }}
+                    {{ form.confirm_password(class="form-control") }}
+                    {% if form.confirm_password.errors %}
+                        <div class="invalid-feedback d-block">
+                            {% for error in form.confirm_password.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="mb-3">
+                    {{ form.submit(class="btn btn-primary") }}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

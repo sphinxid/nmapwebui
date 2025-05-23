@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+
+{% block title %}Host Details{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-pc-display"></i> Host: {{ host.ip_address }}</h1>
+    <div>
+        <a href="{{ url_for('reports.host_pdf', run_id=scan_run.id, host_id=host.id) }}" class="btn btn-danger me-2">
+            <i class="bi bi-file-pdf"></i> Export PDF
+        </a>
+        <a href="{{ url_for('reports.view', run_id=scan_run.id) }}" class="btn btn-primary">
+            <i class="bi bi-arrow-left"></i> Back to Report
+        </a>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Host Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">IP Address:</div>
+                            <div class="col-md-8">{{ host.ip_address }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Hostname:</div>
+                            <div class="col-md-8">{{ host.hostname or 'N/A' }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Status:</div>
+                            <div class="col-md-8">
+                                {% if host.status == 'up' %}
+                                <span class="badge bg-success">Up</span>
+                                {% else %}
+                                <span class="badge bg-danger">Down</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">OS Detection:</div>
+                            <div class="col-md-8">
+                                {% if os_info %}
+                                {{ os_info.name }} ({{ os_info.accuracy }}% accuracy)
+                                {% else %}
+                                N/A
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Open Ports:</div>
+                            <div class="col-md-8">{{ ports|selectattr('state', 'equalto', 'open')|list|length }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Scan Date:</div>
+                            <div class="col-md-8">{{ scan_run.started_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Port Scan Results</h5>
+            </div>
+            <div class="card-body">
+                {% if ports %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Port</th>
+                                <th>Protocol</th>
+                                <th>State</th>
+                                <th>Service</th>
+                                <th>Version</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for port in ports %}
+                            <tr class="{% if port.state == 'open' %}table-success{% elif port.state == 'filtered' %}table-warning{% endif %}">
+                                <td>{{ port.port_number }}</td>
+                                <td>{{ port.protocol }}</td>
+                                <td>
+                                    {% if port.state == 'open' %}
+                                    <span class="badge bg-success">Open</span>
+                                    {% elif port.state == 'closed' %}
+                                    <span class="badge bg-secondary">Closed</span>
+                                    {% elif port.state == 'filtered' %}
+                                    <span class="badge bg-warning text-dark">Filtered</span>
+                                    {% else %}
+                                    <span class="badge bg-info">{{ port.state }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ port.service or 'unknown' }}</td>
+                                <td>{{ port.version or 'N/A' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> No port information available for this host.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

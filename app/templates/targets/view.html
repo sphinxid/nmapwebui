@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+
+{% block title %}View Target Group{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-bullseye"></i> Target Group: {{ target_group.name }}</h1>
+    <div>
+        <a href="{{ url_for('targets.edit', id=target_group.id) }}" class="btn btn-warning">
+            <i class="bi bi-pencil"></i> Edit
+        </a>
+        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+            <i class="bi bi-trash"></i> Delete
+        </button>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to delete the target group <strong>{{ target_group.name }}</strong>?
+                This action cannot be undone.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form action="{{ url_for('targets.delete', id=target_group.id) }}" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Group Details</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-3 fw-bold">Name:</div>
+                    <div class="col-md-9">{{ target_group.name }}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-3 fw-bold">Description:</div>
+                    <div class="col-md-9">{{ target_group.description or 'No description' }}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-3 fw-bold">Created:</div>
+                    <div class="col-md-9">{{ target_group.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-3 fw-bold">Last Updated:</div>
+                    <div class="col-md-9">{{ target_group.updated_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-3 fw-bold">Number of Targets:</div>
+                    <div class="col-md-9">{{ target_group.targets.count() }}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card shadow-sm">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Targets</h5>
+            </div>
+            <div class="card-body">
+                {% if target_group.targets.count() > 0 %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Target</th>
+                                <th>Type</th>
+                                <th>Added</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for target in target_group.targets %}
+                            <tr>
+                                <td>{{ target.value }}</td>
+                                <td>
+                                    {% if target.target_type == 'ip' %}
+                                    <span class="badge bg-primary">IP Address</span>
+                                    {% elif target.target_type == 'cidr' %}
+                                    <span class="badge bg-success">CIDR Subnet</span>
+                                    {% elif target.target_type == 'hostname' %}
+                                    <span class="badge bg-info">Hostname</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ target.created_at.strftime('%Y-%m-%d') }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> No targets in this group.
+                    <a href="{{ url_for('targets.edit', id=target_group.id) }}">Add targets</a>.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

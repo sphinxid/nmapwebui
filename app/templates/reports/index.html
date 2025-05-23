@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+
+{% block title %}Scan Reports{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1><i class="bi bi-file-earmark-text"></i> Scan Reports</h1>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        {% if scan_runs %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Task Name</th>
+                        <th>Scan ID</th>
+                        <th>Started</th>
+                        <th>Completed</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for run in scan_runs %}
+                    <tr>
+                        <td>{{ run.task.name }}</td>
+                        <td>{{ run.id }}</td>
+                        <td>{{ run.started_at|format_datetime('%Y-%m-%d %H:%M') }}</td>
+                        <td>{{ run.completed_at|format_datetime('%Y-%m-%d %H:%M') if run.completed_at else '-' }}</td>
+                        <td>
+                            {% if run.status == 'completed' %}
+                            <span class="badge bg-success">Completed</span>
+                            {% elif run.status == 'failed' %}
+                            <span class="badge bg-danger">Failed</span>
+                            {% elif run.status == 'running' %}
+                            <span class="badge bg-primary">Running ({{ run.progress }}%)</span>
+                            {% elif run.status == 'queued' %}
+                            <span class="badge bg-secondary">Queued</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <a href="{{ url_for('reports.view', run_id=run.id) }}" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-eye"></i> View
+                                </a>
+                                {% if run.report and run.report.xml_report_path %}
+                                <a href="{{ url_for('reports.raw_xml', run_id=run.id) }}" class="btn btn-sm btn-secondary">
+                                    <i class="bi bi-file-earmark-code"></i> XML
+                                </a>
+                                {% endif %}
+                                {% if run.report and run.report.normal_report_path %}
+                                <a href="{{ url_for('reports.raw_text', run_id=run.id) }}" class="btn btn-sm btn-info">
+                                    <i class="bi bi-file-earmark-text"></i> Text
+                                </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if pagination and pagination.total_pages > 1 %}
+        <div class="d-flex justify-content-between align-items-center mt-4">
+            <div>
+                <small class="text-muted">Showing {{ scan_runs|length }} of {{ pagination.total_items }} reports</small>
+            </div>
+            <nav aria-label="Page navigation">
+                <ul class="pagination">
+                    <!-- Previous page button -->
+                    <li class="page-item {{ 'disabled' if pagination.page == 1 else '' }}">
+                        <a class="page-link" href="{{ url_for('reports.index', page=pagination.page-1) if pagination.page > 1 else '#' }}" aria-label="Previous">
+                            <span aria-hidden="true">&laquo;</span>
+                        </a>
+                    </li>
+                    
+                    <!-- Page numbers -->
+                    {% set start_page = [1, pagination.page - 2]|max %}
+                    {% set end_page = [start_page + 4, pagination.total_pages]|min %}
+                    {% set start_page = [end_page - 4, 1]|max %}
+                    
+                    {% for p in range(start_page, end_page + 1) %}
+                    <li class="page-item {{ 'active' if p == pagination.page else '' }}">
+                        <a class="page-link" href="{{ url_for('reports.index', page=p) }}">{{ p }}</a>
+                    </li>
+                    {% endfor %}
+                    
+                    <!-- Next page button -->
+                    <li class="page-item {{ 'disabled' if pagination.page == pagination.total_pages else '' }}">
+                        <a class="page-link" href="{{ url_for('reports.index', page=pagination.page+1) if pagination.page < pagination.total_pages else '#' }}" aria-label="Next">
+                            <span aria-hidden="true">&raquo;</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+        
+        {% else %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> No scan reports found. 
+            <a href="{{ url_for('tasks.index') }}">Run a scan task</a> to generate reports.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

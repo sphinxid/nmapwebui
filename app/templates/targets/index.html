@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+
+{% block title %}Target Groups{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-bullseye"></i> Target Groups</h1>
+    <a href="{{ url_for('targets.create') }}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Create Target Group
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        {% if target_groups %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Targets</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for group in target_groups %}
+                    <tr>
+                        <td>{{ group.name }}</td>
+                        <td>{{ group.description|truncate(50) if group.description else '-' }}</td>
+                        <td>{{ group.targets.count() }}</td>
+                        <td>{{ group.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <a href="{{ url_for('targets.view', id=group.id) }}" class="btn btn-sm btn-info">
+                                    <i class="bi bi-eye"></i> View
+                                </a>
+                                <a href="{{ url_for('targets.edit', id=group.id) }}" class="btn btn-sm btn-warning">
+                                    <i class="bi bi-pencil"></i> Edit
+                                </a>
+                                <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ group.id }}">
+                                    <i class="bi bi-trash"></i> Delete
+                                </button>
+                            </div>
+                            
+                            <!-- Delete Confirmation Modal -->
+                            <div class="modal fade" id="deleteModal{{ group.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ group.id }}" aria-hidden="true">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title" id="deleteModalLabel{{ group.id }}">Confirm Delete</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            Are you sure you want to delete the target group <strong>{{ group.name }}</strong>?
+                                            This action cannot be undone.
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                            <form action="{{ url_for('targets.delete', id=group.id) }}" method="POST">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <button type="submit" class="btn btn-danger">Delete</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if pagination and pagination.total_pages > 1 %}
+        <div class="d-flex justify-content-between align-items-center mt-4">
+            <div>
+                <small class="text-muted">Showing {{ target_groups|length }} of {{ pagination.total_items }} target groups</small>
+            </div>
+            <nav aria-label="Page navigation">
+                <ul class="pagination">
+                    <!-- Previous page button -->
+                    <li class="page-item {{ 'disabled' if pagination.page == 1 else '' }}">
+                        <a class="page-link" href="{{ url_for('targets.index', page=pagination.page-1) if pagination.page > 1 else '#' }}" aria-label="Previous">
+                            <span aria-hidden="true">&laquo;</span>
+                        </a>
+                    </li>
+                    
+                    <!-- Page numbers -->
+                    {% set start_page = [1, pagination.page - 2]|max %}
+                    {% set end_page = [start_page + 4, pagination.total_pages]|min %}
+                    {% set start_page = [end_page - 4, 1]|max %}
+                    
+                    {% for p in range(start_page, end_page + 1) %}
+                    <li class="page-item {{ 'active' if p == pagination.page else '' }}">
+                        <a class="page-link" href="{{ url_for('targets.index', page=p) }}">{{ p }}</a>
+                    </li>
+                    {% endfor %}
+                    
+                    <!-- Next page button -->
+                    <li class="page-item {{ 'disabled' if pagination.page == pagination.total_pages else '' }}">
+                        <a class="page-link" href="{{ url_for('targets.index', page=pagination.page+1) if pagination.page < pagination.total_pages else '#' }}" aria-label="Next">
+                            <span aria-hidden="true">&raquo;</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+        
+        {% else %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> No target groups found. 
+            <a href="{{ url_for('targets.create') }}">Create your first target group</a>.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

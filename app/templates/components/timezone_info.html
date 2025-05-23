@@ -1,0 +1,67 @@
+{% macro timezone_badge() %}
+<span class="badge bg-info">
+    <i class="bi bi-clock"></i> 
+    {% if now is defined %}
+        {{ now|format_datetime('%Y-%m-%d %H:%M:%S') }} 
+    {% else %}
+        Current time
+    {% endif %}
+    {% if timezone_display is defined %}
+        ({{ timezone_display }})
+    {% else %}
+        (UTC)
+    {% endif %}
+</span>
+{% endmacro %}
+
+{% macro timezone_info_alert() %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> <strong>Timezone Information:</strong> All times are displayed in your local timezone 
+    {% if timezone_display is defined %}
+        ({{ timezone_display }})
+    {% else %}
+        (UTC)
+    {% endif %}
+    . You can change your timezone in your <a href="{{ url_for('profile.index') }}">profile settings</a>.
+</div>
+{% endmacro %}
+
+{% macro simple_timezone_display() %}
+<span class="nav-link">
+    <i class="bi bi-clock"></i> 
+    {% if timezone_display is defined %}
+        {{ timezone_display }}
+    {% else %}
+        UTC
+    {% endif %}
+</span>
+{% endmacro %}
+
+{% macro timezone_dropdown() %}
+<div class="dropdown">
+    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="timezoneDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="bi bi-clock"></i> 
+        {% if timezone_display is defined %}
+            {{ timezone_display }}
+        {% else %}
+            UTC
+        {% endif %}
+    </button>
+    <div class="dropdown-menu dropdown-menu-end" aria-labelledby="timezoneDropdown">
+        <div class="dropdown-item-text">
+            <small class="text-muted">Current Time:</small><br>
+            <strong>
+                {% if now is defined %}
+                    {{ now|format_datetime('%Y-%m-%d %H:%M:%S') }}
+                {% else %}
+                    Current time
+                {% endif %}
+            </strong>
+        </div>
+        <div class="dropdown-divider"></div>
+        <a class="dropdown-item" href="{{ url_for('profile.index') }}">
+            <i class="bi bi-gear"></i> Change Timezone
+        </a>
+    </div>
+</div>
+{% endmacro %}
