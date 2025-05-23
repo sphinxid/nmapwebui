@@ -5,7 +5,7 @@ A web-based application that serves as a user-friendly wrapper for the Nmap netw
 ## Features
 
 - User Authentication & Authorization
-- User Management (Admin only)
+- User Management
 - Target Group Management
 - Scan Task Creation & Configuration
 - Asynchronous Background Scanning
@@ -20,20 +20,20 @@ A web-based application that serves as a user-friendly wrapper for the Nmap netw
 - Nmap installed on the system
 - Redis server (for Celery task queue)
 - (optional) Gunicorn or uWSGI for production deployment
-- (optional) user running the celery worker have sudo without password for nmap command that require root privilege
+- (optional) user running the flask & celery worker has sudo access without password for the nmap command that requires root privilege
 
 ## Installation
 
 1. Clone the repository:
 ```
 git clone <repository-url>
-cd cekin
+cd nmapwebui
 ```
 
 2. Create a virtual environment and activate it:
 ```
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
 ```
 
 3. Install the required packages:
