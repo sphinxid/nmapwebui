@@ -221,6 +221,35 @@
                                     <a href="{{ url_for('reports.view', run_id=run.id) }}" class="btn btn-sm btn-primary">
                                         <i class="bi bi-file-earmark-text"></i> Report
                                     </a>
+                                    {% elif run.status in ['queued', 'running'] %}
+                                    <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#killModal{{ run.id }}">
+                                        <i class="bi bi-x-circle"></i> Stop
+                                    </button>
+                                    <!-- Kill Confirmation Modal -->
+                                    <div class="modal fade" id="killModal{{ run.id }}" tabindex="-1" aria-labelledby="killModalLabel{{ run.id }}" aria-hidden="true">
+                                        <div class="modal-dialog">
+                                            <div class="modal-content">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title" id="killModalLabel{{ run.id }}">Confirm Stop Task</h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                </div>
+                                                <div class="modal-body">
+                                                    Are you sure you want to stop this running scan (ID: {{ run.id }})?
+                                                    <br><br>
+                                                    <div class="alert alert-warning">
+                                                        <i class="bi bi-exclamation-triangle"></i> Warning: Stopping a running scan may result in incomplete data.
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                    <form action="{{ url_for('tasks.kill_task', run_id=run.id) }}" method="POST">
+                                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                        <button type="submit" class="btn btn-danger">Stop Task</button>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     {% else %}
                                     <button class="btn btn-sm btn-secondary" disabled>
                                         <i class="bi bi-file-earmark-text"></i> No Report
