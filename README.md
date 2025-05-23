@@ -93,8 +93,8 @@ FLASK_APP=run_app.py
 FLASK_ENV=development
 SECRET_KEY=your-secret-key
 
-# Database configuration
-DATABASE_URL=/path/to/your/database.db
+# must use an absolute path (eg: /home/firman/nmapwebui/instance/app.db)
+DATABASE_URL=sqlite:////home/firman/nmapwebui/instance/app.db
 
 # Celery configuration
 CELERY_BROKER_URL=redis://localhost:6379/0
