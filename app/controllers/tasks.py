@@ -289,6 +289,17 @@ def view(id):
     # Limit the number of scan runs to the max_history setting
     scan_runs = ScanRun.query.filter_by(task_id=scan_task.id).order_by(ScanRun.id.desc()).limit(max_history).all()
     
+    # Get open port counts for each completed scan run
+    for run in scan_runs:
+        run.open_ports_count = 0
+        if run.status == 'completed' and run.report:
+            # Count all open ports across all hosts for this report
+            open_ports_count = db.session.query(func.count(PortFinding.id)).\
+                join(HostFinding, HostFinding.id == PortFinding.host_id).\
+                filter(HostFinding.report_id == run.report.id).\
+                filter(PortFinding.state == 'open').scalar()
+            run.open_ports_count = open_ports_count or 0
+    
     return render_template(
         'tasks/view.html',
         title=f'Scan Task: {scan_task.name}',

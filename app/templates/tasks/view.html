@@ -193,6 +193,7 @@
                                 <th>Status</th>
                                 <th>Started</th>
                                 <th>Completed</th>
+                                <th>Open Ports</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -216,6 +217,17 @@
                                 </td>
                                 <td>{{ run.started_at|format_datetime('%Y-%m-%d %H:%M') }}</td>
                                 <td>{{ run.completed_at|format_datetime('%Y-%m-%d %H:%M') if run.completed_at else '-' }}</td>
+                                <td>
+                                    {% if run.status == 'completed' and run.report %}
+                                        {% if run.open_ports_count > 0 %}
+                                        <span class="badge bg-warning text-dark">{{ run.open_ports_count }} open ports</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">No open ports</span>
+                                        {% endif %}
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
                                 <td>
                                     {% if run.status == 'completed' and run.report %}
                                     <a href="{{ url_for('reports.view', run_id=run.id) }}" class="btn btn-sm btn-primary">
