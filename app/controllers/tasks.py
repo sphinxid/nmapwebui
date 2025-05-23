@@ -408,3 +408,45 @@ def api_status(run_id):
         'started_at': scan_run.started_at.isoformat() if scan_run.started_at else None,
         'completed_at': scan_run.completed_at.isoformat() if scan_run.completed_at else None
     })
+
+@tasks_bp.route('/<int:run_id>/kill', methods=['POST'])
+@login_required
+def kill_task(run_id):
+    # Get the scan run and verify ownership
+    scan_run = ScanRun.query.join(ScanTask).filter(
+        ScanRun.id == run_id,
+        ScanTask.user_id == current_user.id
+    ).first_or_404()
+    
+    # Check if the task is actually running
+    if scan_run.status not in ['queued', 'running']:
+        flash('This task is not running.', 'warning')
+        return redirect(url_for('tasks.view', id=scan_run.task_id))
+    
+    # If the task has a Celery task ID, revoke it
+    if scan_run.celery_task_id:
+        try:
+            celery.control.revoke(scan_run.celery_task_id, terminate=True, signal='SIGKILL')
+        except Exception as e:
+            print(f"Error revoking Celery task: {str(e)}")
+    
+    # If the task has an Nmap PID, kill the process
+    if scan_run.nmap_pid:
+        try:
+            # Try to kill the process
+            import os
+            import signal
+            os.kill(scan_run.nmap_pid, signal.SIGKILL)
+            print(f"Killed Nmap process with PID {scan_run.nmap_pid}")
+        except ProcessLookupError:
+            print(f"Process with PID {scan_run.nmap_pid} not found")
+        except Exception as e:
+            print(f"Error killing process: {str(e)}")
+    
+    # Update the scan run status
+    scan_run.status = 'failed'
+    scan_run.completed_at = datetime.utcnow()
+    db.session.commit()
+    
+    flash('Task stopped successfully.', 'success')
+    return redirect(url_for('tasks.view', id=scan_run.task_id))
