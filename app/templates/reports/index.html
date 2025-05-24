@@ -11,6 +11,12 @@
 
 <div class="card shadow-sm">
     <div class="card-body">
+        <form method="get" class="mb-3" action="{{ url_for('reports.index') }}">
+            <div class="input-group">
+                <input type="text" name="search" id="searchScanReports" class="form-control" placeholder="Search reports by task name..." value="{{ search|default('') }}">
+                <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-search"></i> Search</button>
+            </div>
+        </form>
         {% if scan_runs %}
         <div class="table-responsive">
             <table class="table table-hover">
@@ -86,13 +92,13 @@
                     
                     {% for p in range(start_page, end_page + 1) %}
                     <li class="page-item {{ 'active' if p == pagination.page else '' }}">
-                        <a class="page-link" href="{{ url_for('reports.index', page=p) }}">{{ p }}</a>
+                        <a class="page-link" href="{{ url_for('reports.index', page=p, search=search) }}">{{ p }}</a>
                     </li>
                     {% endfor %}
                     
                     <!-- Next page button -->
                     <li class="page-item {{ 'disabled' if pagination.page == pagination.total_pages else '' }}">
-                        <a class="page-link" href="{{ url_for('reports.index', page=pagination.page+1) if pagination.page < pagination.total_pages else '#' }}" aria-label="Next">
+                        <a class="page-link" href="{{ url_for('reports.index', page=pagination.page+1, search=search) if pagination.page < pagination.total_pages else '#' }}" aria-label="Next">
                             <span aria-hidden="true">&raquo;</span>
                         </a>
                     </li>

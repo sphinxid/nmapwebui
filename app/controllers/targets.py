@@ -16,37 +16,47 @@ targets_bp = Blueprint('targets', __name__, url_prefix='/targets')
 def index(page=1):
     # Get pagination settings from system settings
     per_page = SystemSettings.get_int('pagination_rows', 20)
-    
-    # Get all target groups for the current user
-    # For SQLite compatibility, we'll get all results and paginate in Python
-    all_target_groups = TargetGroup.query.filter_by(user_id=current_user.id).order_by(TargetGroup.name).all()
-    
-    # Get total count
+
+    # Get search query from request
+    search = request.args.get('search', '', type=str).strip()
+
+    # Build base query
+    query = TargetGroup.query.filter_by(user_id=current_user.id)
+    if search:
+        # Case-insensitive search on name or description
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            (TargetGroup.name.ilike(search_pattern)) |
+            (TargetGroup.description.ilike(search_pattern))
+        )
+    query = query.order_by(TargetGroup.name)
+
+    # For SQLite compatibility, get all results and paginate in Python
+    all_target_groups = query.all()
     total_groups = len(all_target_groups)
-    
-    # Calculate total pages
     total_pages = (total_groups + per_page - 1) // per_page  # Ceiling division
-    
+
     # Ensure page is within valid range
     if page < 1:
         page = 1
     elif page > total_pages and total_pages > 0:
         page = total_pages
-    
+
     # Apply pagination manually
     start_idx = (page - 1) * per_page
     end_idx = start_idx + per_page
     target_groups = all_target_groups[start_idx:end_idx]
-    
-    return render_template('targets/index.html', 
-                          title='Target Groups', 
+
+    return render_template('targets/index.html',
+                          title='Target Groups',
                           target_groups=target_groups,
                           pagination={
                               'page': page,
                               'per_page': per_page,
                               'total_pages': total_pages,
                               'total_items': total_groups
-                          })
+                          },
+                          search=search)
 
 @targets_bp.route('/create', methods=['GET', 'POST'])
 @login_required

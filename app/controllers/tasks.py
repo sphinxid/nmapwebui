@@ -25,60 +25,55 @@ tasks_bp = Blueprint('tasks', __name__, url_prefix='/tasks')
 def index(page=1):
     # Get pagination settings from system settings
     per_page = SystemSettings.get_int('pagination_rows', 20)
-    
-    # Get total count of tasks for the current user
-    total_tasks = ScanTask.query.filter_by(user_id=current_user.id).count()
-    
-    # Calculate total pages
-    total_pages = (total_tasks + per_page - 1) // per_page  # Ceiling division
-    
-    # Ensure page is within valid range
-    if page < 1:
-        page = 1
-    elif page > total_pages and total_pages > 0:
-        page = total_pages
-    
-    # Get tasks for the current page
-    # We'll get all tasks and sort them manually since we need to sort by latest run ID
-    all_scan_tasks = ScanTask.query.filter_by(user_id=current_user.id).all()
-    
-    # For each task, get the latest scan run and open ports count
+
+    # Get search query from request
+    search = request.args.get('search', '', type=str).strip()
+
+    # Build base query
+    query = ScanTask.query.filter_by(user_id=current_user.id)
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(ScanTask.name.ilike(search_pattern))
+    all_scan_tasks = query.all()
+
     for task in all_scan_tasks:
-        # Get the latest scan run for this task, ordered by ID DESC
         latest_run = ScanRun.query.filter_by(task_id=task.id).order_by(ScanRun.id.desc()).first()
         task.latest_run = latest_run
-        
-        # Get open ports count for the latest successful scan
         task.open_ports_count = 0
         if latest_run and latest_run.status == 'completed':
-            # Find the report for this scan run
             report = ScanReport.query.filter_by(scan_run_id=latest_run.id).first()
             if report:
-                # Count all open ports across all hosts
                 open_ports_count = db.session.query(func.count(PortFinding.id)).\
                     join(HostFinding, HostFinding.id == PortFinding.host_id).\
                     filter(HostFinding.report_id == report.id).\
                     filter(PortFinding.state == 'open').scalar()
                 task.open_ports_count = open_ports_count or 0
-    
-    # Sort tasks by their latest run's ID (if available)
+
     all_scan_tasks.sort(key=lambda x: x.latest_run.id if x.latest_run else 0, reverse=True)
-    
-    # Apply pagination manually
+    total_tasks = len(all_scan_tasks)
+    total_pages = (total_tasks + per_page - 1) // per_page
+
+    if page < 1:
+        page = 1
+    elif page > total_pages and total_pages > 0:
+        page = total_pages
+
     start_idx = (page - 1) * per_page
     end_idx = start_idx + per_page
     scan_tasks = all_scan_tasks[start_idx:end_idx]
-    
-    return render_template('tasks/index.html', 
-                          title='Scan Tasks', 
-                          scan_tasks=scan_tasks, 
+
+    return render_template('tasks/index.html',
+                          title='Scan Tasks',
+                          scan_tasks=scan_tasks,
                           ScanRun=ScanRun,
                           pagination={
                               'page': page,
                               'per_page': per_page,
                               'total_pages': total_pages,
                               'total_items': total_tasks
-                          })
+                          },
+                          search=search)
+
 
 @tasks_bp.route('/create', methods=['GET', 'POST'])
 @login_required

@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, send_file, make_response
 from flask_login import login_required, current_user
 from app import db
-from app.models.task import ScanRun
+from app.models.task import ScanRun, ScanTask
 from app.models.report import ScanReport, HostFinding, PortFinding
 from app.models.settings import SystemSettings
 import os
@@ -28,39 +28,42 @@ reports_bp = Blueprint('reports', __name__, url_prefix='/reports')
 def index(page=1):
     # Get pagination settings from system settings
     per_page = SystemSettings.get_int('pagination_rows', 20)
-    
-    # Get all scan runs with reports for the current user
-    # For SQLite compatibility, we'll get all results and paginate in Python
-    all_scan_runs = ScanRun.query.join(ScanReport).join(ScanRun.task).filter(
+
+    # Get search query from request
+    search = request.args.get('search', '', type=str).strip()
+
+    # Build base query for scan runs with reports for the current user
+    base_query = ScanRun.query.join(ScanReport).join(ScanRun.task).filter(
         ScanRun.task.has(user_id=current_user.id)
-    ).order_by(ScanRun.started_at.desc()).all()
-    
-    # Get total count
+    )
+    if search:
+        search_pattern = f"%{search}%"
+        base_query = base_query.filter(ScanRun.task.has(ScanTask.name.ilike(search_pattern)))
+    all_scan_runs = base_query.order_by(ScanRun.started_at.desc()).all()
+
     total_reports = len(all_scan_runs)
-    
-    # Calculate total pages
-    total_pages = (total_reports + per_page - 1) // per_page  # Ceiling division
-    
-    # Ensure page is within valid range
+    total_pages = (total_reports + per_page - 1) // per_page
+
     if page < 1:
         page = 1
     elif page > total_pages and total_pages > 0:
         page = total_pages
-    
-    # Apply pagination manually
+
     start_idx = (page - 1) * per_page
     end_idx = start_idx + per_page
     scan_runs = all_scan_runs[start_idx:end_idx]
-    
-    return render_template('reports/index.html', 
-                          title='Scan Reports', 
+
+    return render_template('reports/index.html',
+                          title='Scan Reports',
                           scan_runs=scan_runs,
                           pagination={
                               'page': page,
                               'per_page': per_page,
                               'total_pages': total_pages,
                               'total_items': total_reports
-                          })
+                          },
+                          search=search)
+
 
 @reports_bp.route('/<int:run_id>')
 @login_required
