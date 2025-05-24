@@ -140,6 +140,11 @@ Before running the container, you **must** update your `.env` file for the Docke
     `CELERY_RESULT_BACKEND=redis://localhost:6379/0`
 3.  **`NMAP_REPORTS_DIR`**: This should also point to a path inside the container that will be mounted:
     `NMAP_REPORTS_DIR=/app/instance/reports`
+4.  **`ADMIN_USER`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (Optional for first run)**: For the initial setup, the `entrypoint.sh` script can automatically create an admin user if these environment variables are set.
+    -   `ADMIN_USER`: Desired username for the admin account.
+    -   `ADMIN_EMAIL`: Email address for the admin account.
+    -   `ADMIN_PASSWORD`: Password for the admin account (must be at least 8 characters).
+    If these are not provided, the `create_admin.py` script (called by `entrypoint.sh`) will not automatically create a user, and you might need to create one manually or ensure one already exists in the database volume. For a fully automated first run, setting these is recommended.
 
 Ensure other variables like `SECRET_KEY` are set appropriately.
 
