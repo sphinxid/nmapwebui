@@ -114,6 +114,12 @@
     <div class="header">
         <h1>Host Report: {{ host.ip_address }}</h1>
         <p>Scan Task: {{ scan_run.task.name }} | Scan Date: {{ scan_run.started_at.strftime('%Y-%m-%d %H:%M') }} (UTC)</p>
+        {% if summary %}
+        <div style="margin-top: 10px; font-size: 14px;">
+            <strong>Nmap Version:</strong> {{ summary.version }}<br>
+            <strong>Arguments:</strong> <code>{{ summary.args }}</code>
+        </div>
+        {% endif %}
     </div>
 
     <div class="section">
@@ -156,6 +162,16 @@
                 <div>{{ scan_run.started_at.strftime('%Y-%m-%d %H:%M') }} (UTC)</div>
             </div>
         </div>
+        {% if summary %}
+        <div class="info-item">
+            <div class="info-label">Nmap Version:</div>
+            <div>{{ summary.version }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Arguments:</div>
+            <div><code>{{ summary.args }}</code></div>
+        </div>
+        {% endif %}        
     </div>
 
     <div class="section">
