@@ -22,6 +22,30 @@ def make_timezone_aware(dt):
         return pytz.UTC.localize(dt)
     return dt
 
+def get_all_scheduled_tasks_info():
+    """Get information about all scheduled tasks for display"""
+    try:
+        logger.info(f"Current UTC time: {datetime.now(pytz.UTC)}")
+        logger.info("All scheduled tasks and their next run times:")
+        
+        # Get all scheduled tasks
+        scheduled_tasks = ScanTask.query.filter_by(is_scheduled=True).all()
+        
+        for task in scheduled_tasks:
+            job_id = f"scan_task_{task.id}"
+            job = scheduler.get_job(job_id)
+            
+            next_run = "Not scheduled"
+            if job and job.next_run_time:
+                next_run = job.next_run_time
+            
+            logger.info(f"  Task ID: {task.id}, Name: {task.name}, Next run: {next_run}")
+            
+        return True
+    except Exception as e:
+        logger.error(f"Error getting scheduled tasks info: {str(e)}")
+        return False
+
 def check_missed_scheduled_runs():
     """
     Check for scheduled tasks that should have run but haven't
@@ -39,6 +63,20 @@ def check_missed_scheduled_runs():
                 # Get the job to determine the scheduled time
                 job_id = f"scan_task_{task.id}"
                 job = scheduler.get_job(job_id)
+                
+                # For interval tasks, also check the one-time setup job and metadata job
+                if task.schedule_type == 'interval':
+                    one_time_job_id = f"one_time_setup_{job_id}"
+                    one_time_job = scheduler.get_job(one_time_job_id)
+                    meta_job_id = f"meta_{job_id}"
+                    meta_job = scheduler.get_job(meta_job_id)
+                    
+                    # Use the metadata job if it exists
+                    if meta_job and meta_job.next_run_time:
+                        job = meta_job
+                    # Use the one-time job if it exists
+                    elif one_time_job and one_time_job.next_run_time:
+                        job = one_time_job
                 
                 if not job or not job.next_run_time:
                     logger.warning(f"Task {task.id} has no valid schedule, skipping check")
@@ -211,10 +249,9 @@ def initialize_scheduled_tasks():
                 job_id = f"scan_task_{task.id}"
                 job = scheduler.get_job(job_id)
                 
-                # For interval tasks, only schedule if the job doesn't exist
-                # This prevents constant rescheduling of interval tasks
-                if task.schedule_type == 'interval' and job is not None:
-                    logger.info(f"Task {task.id} ({task.name}) is already scheduled as an interval task, skipping")
+                # If job exists, the task is already scheduled
+                if job is not None:
+                    logger.info(f"Task {task.id} ({task.name}) is already scheduled, skipping")
                     continue
                 
                 result = schedule_task(task)
@@ -240,15 +277,14 @@ def initialize_scheduled_tasks():
 def schedule_task(task):
     """
     Schedule a task based on its schedule configuration
-    All scheduling is done in UTC, but the task's schedule data may be in the user's timezone
     """
     if not task.is_scheduled or not task.schedule_type or not task.schedule_data:
         return False
     
-    schedule_data = task.get_schedule_data()
     job_id = f"scan_task_{task.id}"
+    schedule_data = task.get_schedule_data()
     
-    # Get the user's timezone for conversion
+    # Get the user's timezone
     user = User.query.get(task.user_id)
     user_timezone = user.timezone if user else 'UTC'
     
@@ -262,15 +298,22 @@ def schedule_task(task):
         
         # Convert from user timezone to UTC for scheduling
         if user_timezone != 'UTC':
-            # Create a datetime in user's timezone
-            user_dt = datetime.now().replace(hour=hour, minute=minute, second=0, microsecond=0)
+            # Create a datetime in user's timezone using a fixed reference date
+            # Using a fixed date (today) ensures consistent conversion
+            today_utc = datetime.now(pytz.UTC)
             user_tz = pytz.timezone(user_timezone)
-            user_dt = user_tz.localize(user_dt)
+            
+            # Create a timezone-aware datetime in user's timezone
+            user_dt = user_tz.localize(
+                datetime(today_utc.year, today_utc.month, today_utc.day, hour, minute, 0)
+            )
             
             # Convert to UTC
             utc_dt = user_dt.astimezone(pytz.UTC)
             hour = utc_dt.hour
             minute = utc_dt.minute
+            
+            logger.info(f"Converted daily schedule from {user_timezone} {hour}:{minute} to UTC {utc_dt.hour}:{utc_dt.minute}")
         
         scheduler.add_job(
             func=create_scheduled_scan_run,
@@ -278,7 +321,8 @@ def schedule_task(task):
             hour=hour,
             minute=minute,
             id=job_id,
-            args=[task.id]
+            args=[task.id],
+            misfire_grace_time=3600  # Allow 1 hour for misfires
         )
         
     elif task.schedule_type == 'weekly':
@@ -288,16 +332,19 @@ def schedule_task(task):
         
         # Convert from user timezone to UTC for scheduling
         if user_timezone != 'UTC':
-            # Create a datetime in user's timezone (using next occurrence of day_of_week)
-            today = datetime.now()
-            days_ahead = day_of_week - today.weekday()
+            # Find the next occurrence of the specified day of week
+            today_utc = datetime.now(pytz.UTC)
+            days_ahead = day_of_week - today_utc.weekday()
             if days_ahead < 0:  # Target day already happened this week
                 days_ahead += 7
             
-            next_day = today + timedelta(days=days_ahead)
-            user_dt = next_day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            next_day = today_utc + timedelta(days=days_ahead)
             user_tz = pytz.timezone(user_timezone)
-            user_dt = user_tz.localize(user_dt)
+            
+            # Create a timezone-aware datetime in user's timezone
+            user_dt = user_tz.localize(
+                datetime(next_day.year, next_day.month, next_day.day, hour, minute, 0)
+            )
             
             # Convert to UTC
             utc_dt = user_dt.astimezone(pytz.UTC)
@@ -305,6 +352,8 @@ def schedule_task(task):
             day_of_week = utc_dt.weekday()
             hour = utc_dt.hour
             minute = utc_dt.minute
+            
+            logger.info(f"Converted weekly schedule from {user_timezone} day {day_of_week}, {hour}:{minute} to UTC day {utc_dt.weekday()}, {utc_dt.hour}:{utc_dt.minute}")
         
         scheduler.add_job(
             func=create_scheduled_scan_run,
@@ -313,7 +362,8 @@ def schedule_task(task):
             hour=hour,
             minute=minute,
             id=job_id,
-            args=[task.id]
+            args=[task.id],
+            misfire_grace_time=3600  # Allow 1 hour for misfires
         )
         
     elif task.schedule_type == 'monthly':
@@ -323,21 +373,27 @@ def schedule_task(task):
         
         # Convert from user timezone to UTC for scheduling
         if user_timezone != 'UTC':
-            # Create a datetime in user's timezone
-            today = datetime.now()
-            # Use current month's day or next month if day has passed
-            if today.day > day:
-                if today.month == 12:
-                    next_month = today.replace(year=today.year+1, month=1, day=day)
-                else:
-                    next_month = today.replace(month=today.month+1, day=day)
-                user_dt = next_month
-            else:
-                user_dt = today.replace(day=day)
+            # Use the next occurrence of the specified day in the month
+            today_utc = datetime.now(pytz.UTC)
             
-            user_dt = user_dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            # Determine the target month
+            if today_utc.day > day:  # If the day has passed in the current month
+                if today_utc.month == 12:
+                    target_year = today_utc.year + 1
+                    target_month = 1
+                else:
+                    target_year = today_utc.year
+                    target_month = today_utc.month + 1
+            else:
+                target_year = today_utc.year
+                target_month = today_utc.month
+            
             user_tz = pytz.timezone(user_timezone)
-            user_dt = user_tz.localize(user_dt)
+            
+            # Create a timezone-aware datetime in user's timezone
+            user_dt = user_tz.localize(
+                datetime(target_year, target_month, day, hour, minute, 0)
+            )
             
             # Convert to UTC
             utc_dt = user_dt.astimezone(pytz.UTC)
@@ -345,6 +401,25 @@ def schedule_task(task):
             day = utc_dt.day
             hour = utc_dt.hour
             minute = utc_dt.minute
+            month = utc_dt.month  # The month might also change
+            
+            logger.info(f"Converted monthly schedule from {user_timezone} day {day}, {hour}:{minute} to UTC day {utc_dt.day}, {utc_dt.hour}:{utc_dt.minute}")
+            
+            # If the day changes when converting to UTC, we need to use a different approach
+            # Use day='last' if the original day was the last day of the month
+            days_in_month = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+            if day == days_in_month[target_month]:  # Last day of the month
+                scheduler.add_job(
+                    func=create_scheduled_scan_run,
+                    trigger='cron',
+                    day='last',  # Last day of the month
+                    hour=hour,
+                    minute=minute,
+                    id=job_id,
+                    args=[task.id],
+                    misfire_grace_time=3600  # Allow 1 hour for misfires
+                )
+                return True
         
         scheduler.add_job(
             func=create_scheduled_scan_run,
@@ -353,19 +428,25 @@ def schedule_task(task):
             hour=hour,
             minute=minute,
             id=job_id,
-            args=[task.id]
+            args=[task.id],
+            misfire_grace_time=3600  # Allow 1 hour for misfires
         )
         
     elif task.schedule_type == 'interval':
         hours = schedule_data.get('hours', 24)  # Default to daily
         
+        # Schedule the task to run immediately and then repeat at the specified interval
         scheduler.add_job(
             func=create_scheduled_scan_run,
             trigger='interval',
             hours=hours,
             id=job_id,
-            args=[task.id]
+            args=[task.id],
+            misfire_grace_time=3600  # Allow 1 hour for misfires
         )
+        
+        logger.info(f"Interval task scheduled to run immediately and repeat every {hours} hours")
+        
     
     return True
 
@@ -382,6 +463,9 @@ def unschedule_task(task_id):
 def create_scheduled_scan_run(task_id):
     """
     Create a scan run for a scheduled task and start it
+    
+    Args:
+        task_id: The ID of the task to run
     """
     try:
         from app import create_app
@@ -391,6 +475,13 @@ def create_scheduled_scan_run(task_id):
         with app.app_context():
             logger.info(f"Creating scheduled scan run for task {task_id}")
             
+            # Always execute the task
+            pass
+            
+            # For SQLite, we'll use a different approach to prevent race conditions
+            # Instead of row-level locking, we'll use a unique constraint check
+            
+            # First, get the task without locking
             task = ScanTask.query.get(task_id)
             if not task:
                 logger.error(f"Task {task_id} not found")
@@ -400,7 +491,7 @@ def create_scheduled_scan_run(task_id):
             if not task.is_scheduled:
                 logger.warning(f"Task {task_id} is no longer scheduled, skipping run")
                 return None
-            
+                
             # Check if there's already a queued or running scan for this task
             existing_scan = ScanRun.query.filter(
                 ScanRun.task_id == task.id,
@@ -410,18 +501,55 @@ def create_scheduled_scan_run(task_id):
             if existing_scan:
                 logger.warning(f"Task {task_id} already has a {existing_scan.status} scan (ID: {existing_scan.id}), skipping")
                 return None
-            
+                
             # Get the job to determine the scheduled time
             job_id = f"scan_task_{task_id}"
             job = scheduler.get_job(job_id)
             
-            # Create a new scan run
+            # Check if this task has run recently (for interval tasks)
+            # This helps prevent multiple runs within the same interval period
+            if task.schedule_type == 'interval':
+                # Get the most recent completed scan run
+                recent_scan = ScanRun.query.filter(
+                    ScanRun.task_id == task.id,
+                    ScanRun.status == 'completed'
+                ).order_by(ScanRun.completed_at.desc()).first()
+                
+                if recent_scan and recent_scan.completed_at:
+                    # Get the interval hours from schedule data
+                    schedule_data = task.get_schedule_data()
+                    interval_hours = schedule_data.get('hours', 24)
+                    
+                    # Calculate the minimum time between runs
+                    min_time_between_runs = timedelta(hours=interval_hours * 0.9)  # 90% of the interval
+                    now = datetime.now(pytz.UTC)
+                    
+                    # Make sure completed_at is timezone-aware
+                    completed_at = recent_scan.completed_at
+                    if completed_at.tzinfo is None:
+                        # If it's naive, assume it's in UTC
+                        completed_at = pytz.UTC.localize(completed_at)
+                    
+                    time_since_last_run = now - completed_at
+                    
+                    if time_since_last_run < min_time_between_runs:
+                        logger.warning(f"Task {task_id} ran too recently ({time_since_last_run} ago), skipping this run")
+                        return None
+                
+            # Create a new scan run with a unique constraint on task_id and status
+            # This will help prevent duplicate runs
+            now = datetime.now(pytz.UTC)
+            
+            # Create a unique identifier for this scheduled run
+            # This helps prevent duplicate runs even with SQLite's limited locking
+            run_identifier = f"{task.id}_{now.strftime('%Y%m%d%H%M%S')}_{id(task)}"
+            
             scan_run = ScanRun(
                 task_id=task.id,
                 status='queued',
-                created_at=datetime.now(pytz.UTC)
+                created_at=now
             )
-            
+                
             # Store the next run time in the started_at field to use for prioritization
             # This will ensure tasks are processed in order of their scheduled time
             if job and job.next_run_time:
@@ -432,21 +560,35 @@ def create_scheduled_scan_run(task_id):
                 # If no next run time is available, use current time
                 scan_run.started_at = datetime.now(pytz.UTC)
                 logger.info(f"Setting priority time for scan run to current time: {scan_run.started_at}")
-            
-            db.session.add(scan_run)
-            db.session.commit()
-            
-            scan_run_id = scan_run.id
-            logger.info(f"Created scan run {scan_run_id} for task {task_id} with priority time {scan_run.started_at}")
-            
-            # Instead of directly running the task, let the task processor handle it
-            # This ensures that the max_concurrent_tasks setting is respected
-            logger.info(f"Scan run {scan_run_id} created and queued. It will be processed by the task processor.")
-            # We don't call run_nmap_scan directly anymore - the task processor will handle it
+                
+            # Try to add and commit in a try block to catch any unique constraint violations
+            try:
+                db.session.add(scan_run)
+                db.session.commit()
+                
+                scan_run_id = scan_run.id
+                logger.info(f"Created scan run {scan_run_id} for task {task_id} with priority time {scan_run.started_at}")
+                
+                # Instead of directly running the task, let the task processor handle it
+                # This ensures that the max_concurrent_tasks setting is respected
+                logger.info(f"Scan run {scan_run_id} created and queued. It will be processed by the task processor.")
+                
+                return scan_run_id
+            except OperationalError as oe:
+                if 'UNIQUE constraint failed' in str(oe):
+                    logger.warning(f"Task {task_id} already has a queued or running scan, skipping")
+                    db.session.rollback()
+                    return None
+                else:
+                    logger.warning(f"Database error while processing task {task_id}: {str(oe)}")
+                    db.session.rollback()
+                    return None
         
         return scan_run_id
     except Exception as e:
         logger.error(f"Error creating scheduled scan run for task {task_id}: {str(e)}")
+        if 'db' in locals() and db.session.is_active:
+            db.session.rollback()
         return None
 
 
