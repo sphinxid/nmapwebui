@@ -62,6 +62,16 @@
                             <div class="col-md-4 fw-bold">Scan Date:</div>
                             <div class="col-md-8">{{ scan_run.started_at.strftime('%Y-%m-%d %H:%M') }}</div>
                         </div>
+                        {% if summary %}
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Nmap Version:</div>
+                            <div class="col-md-8">{{ summary.version }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 fw-bold">Arguments:</div>
+                            <div class="col-md-8"><code>{{ summary.args }}</code></div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>

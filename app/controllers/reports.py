@@ -117,6 +117,11 @@ def view_host(run_id, host_id):
     if host.os_info:
         os_info = json.loads(host.os_info)
     
+    # Parse summary if it exists
+    summary = None
+    if report.summary:
+        summary = json.loads(report.summary)
+    
     return render_template(
         'reports/host.html',
         title=f'Host Details: {host.ip_address}',
@@ -124,7 +129,8 @@ def view_host(run_id, host_id):
         report=report,
         host=host,
         ports=ports,
-        os_info=os_info
+        os_info=os_info,
+        summary=summary
     )
 
 @reports_bp.route('/<int:run_id>/raw/xml')
@@ -299,13 +305,23 @@ def host_pdf(run_id, host_id):
         except json.JSONDecodeError:
             os_info = None
     
+    # Parse summary if it exists
+    summary = None
+    report = ScanReport.query.filter_by(scan_run_id=scan_run.id).first()
+    if report and report.summary:
+        try:
+            summary = json.loads(report.summary)
+        except Exception:
+            summary = None
+
     # Render the HTML template
     html_content = render_template(
         'reports/host_pdf.html',
         host=host,
         ports=ports,
         scan_run=scan_run,
-        os_info=os_info
+        os_info=os_info,
+        summary=summary
     )
     
     # Generate PDF from HTML

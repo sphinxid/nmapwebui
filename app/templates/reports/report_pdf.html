@@ -240,6 +240,16 @@
                 </div>
             </div>
         </div>
+        {% if summary %}
+        <div class="info-item" style="grid-column: 1 / -1; margin-top: 16px;">
+            <span class="info-label">Nmap Version:</span>
+            <span>{{ summary.version }}</span>
+        </div>
+        <div class="info-item" style="grid-column: 1 / -1;">
+            <span class="info-label">Arguments:</span>
+            <span><code>{{ summary.args }}</code></span>
+        </div>
+        {% endif %}
     </div>
 
     {% for item in host_data %}
