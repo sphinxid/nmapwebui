@@ -1,0 +1,48 @@
+name: Build and Push Docker Image to GHCR on Release
+
+on:
+  release:
+    types: [created] # This workflow runs only when a new GitHub Release is created
+
+jobs:
+
+  build-and-push:
+
+    runs-on: ubuntu-latest # Use ubuntu-latest for the most recent runner image
+
+    permissions:
+      contents: read # Allows checkout
+      packages: write # Allows pushing to GHCR associated with the repository
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      # Recommended for modern builds (multi-platform, caching, etc.)
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }} # The GitHub user/org that triggered the workflow
+        password: ${{ secrets.GITHUB_TOKEN }} # The built-in token with permissions
+
+    - name: Build and push the Docker image
+      # Determine the tag based on the release tag
+      # Format for GHCR is ghcr.io/OWNER/REPOSITORY/IMAGE_NAME:TAG
+      run: |
+        IMAGE_NAME=nmapwebui
+        # github.repository gives OWNER/REPOSITORY format (e.g., my-org/my-repo)
+        IMAGE_URL=ghcr.io/${{ github.repository }}/$IMAGE_NAME
+        # github.event.release.tag_name gives the tag you used for the release (e.g., v1.0.0)
+        IMAGE_TAG=${{ github.event.release.tag_name }}
+
+        echo "Building and pushing $IMAGE_URL:$IMAGE_TAG"
+
+        # Build and push in one step using buildx
+        docker buildx build . \
+          --file Dockerfile \
+          --push \
+          --tag $IMAGE_URL:$IMAGE_TAG
