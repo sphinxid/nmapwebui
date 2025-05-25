@@ -111,3 +111,63 @@ FLASK_PORT=5000
 ## License
 
 [MIT License](LICENSE)
+
+## Running with Docker
+
+This application can be built and run as a Docker container. The provided `Dockerfile` and `docker-compose.yml` sets up the necessary environment, including Nmap, Redis, and all Python dependencies. Supervisor is used to manage the Gunicorn (Flask app), Celery worker, and Celery beat processes.
+
+### Prerequisites for Docker
+
+- Docker installed on your system.
+- Ensure you have an `.env` file created (you can copy `.env.docker.example`). See "Important Configuration for Docker" below.
+
+### Building the Docker Image
+
+To build the Docker image, navigate to the project root directory (where the `Dockerfile` is located) and run:
+
+```bash
+docker build -t nmapwebui .
+```
+
+### Important Configuration for Docker
+
+Before running the container, you **must** update your `.env` file for the Docker environment:
+
+1.  **`DATABASE_URL`**: Since SQLite is used and data should persist outside the container, this path should point to a location *inside* the container that will be mounted as a volume. The `Dockerfile` places the application in `/app`. A good value for the container is:
+    `DATABASE_URL=sqlite:////app/instance/app.db`
+2.  **`CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND`**: Redis runs inside the same container and is managed by Supervisor. So, these should point to the internal Redis instance:
+    `CELERY_BROKER_URL=redis://nmapwebui-redis:6379/0`
+    `CELERY_RESULT_BACKEND=redis://nmapwebui-redis:6379/0`
+3.  **`NMAP_REPORTS_DIR`**: This should also point to a path inside the container that will be mounted:
+    `NMAP_REPORTS_DIR=/app/instance/reports`
+4.  **`ADMIN_USER`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (Optional for first run)**: For the initial setup, the `entrypoint.sh` script can automatically create an admin user if these environment variables are set.
+    -   `ADMIN_USER`: Desired username for the admin account.
+    -   `ADMIN_EMAIL`: Email address for the admin account.
+    -   `ADMIN_PASSWORD`: Password for the admin account (must be at least 8 characters).
+    If these are not provided, the `create_admin.py` script (called by `entrypoint.sh`) will not automatically create a user, and you might need to create one manually or ensure one already exists in the database volume. For a fully automated first run, setting these is recommended.
+
+Ensure other variables like `SECRET_KEY` are set appropriately.
+
+### Running the Docker Container
+
+To run the Docker container:
+
+```bash
+docker compose up
+```
+
+After starting the container, the application should be accessible at `http://localhost:51234`.
+
+### Accessing Logs
+
+To view the logs from the running container (which includes output from Supervisor and the services it manages):
+
+```bash
+docker logs nmapwebui-container
+```
+
+To follow the logs in real-time:
+
+```bash
+docker logs -f nmapwebui-container
+```
