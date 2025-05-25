@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  nmapwebui:
+    build: .
+    container_name: nmapwebui-container
+    ports:
+      - "51234:51234" # Maps host port 51234 to container port 51234
+    env_file:
+      - .env # Loads environment variables from your .env file
+    #volumes:
+    #  - ./instance:/app/instance # Mounts your host's instance directory
+    depends_on:
+      - redis
+    environment:
+      REDIS_HOST: nmapwebui-redis
+      REDIS_PORT: 6379
+
+  redis:
+    image: redis:latest # Use the official Redis Docker image
+    container_name: nmapwebui-redis
+    # ports:
+    #   - "6379:6379" # Optional: only expose if you need to access Redis directly from your host
+    volumes:
+      - redis_data:/data # Persist Redis data to a named volume
+
+volumes:
+  redis_data: # Define the named volume for Redis persistence

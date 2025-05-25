@@ -5,12 +5,17 @@ FROM python:3.9-slim-bookworm
 ENV PYTHONUNBUFFERED=1
 
 # Install system dependencies
-RUN apt-get update &&     apt-get install -y --no-install-recommends     nmap     redis-server     libpango-1.0-0     libpangoft2-1.0-0     libharfbuzz0b     libpangocairo-1.0-0     sudo     supervisor &&     # Create redis run and lib directories and ensure correct ownership
-    mkdir -p /var/run/redis /var/lib/redis &&     chown -R redis:redis /var/run/redis /var/lib/redis &&     # Clean up apt cache
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends nmap libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libpangocairo-1.0-0 sudo supervisor
+
+# Clean up apt cache
+RUN rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user and group
 RUN groupadd -r appgroup &&     useradd -r -g appgroup -d /home/appuser -s /bin/bash -m appuser &&     chown -R appuser:appgroup /home/appuser
+
+# Setup sudo for the user
+RUN echo "appuser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/appuser-nopasswd && \
+    chmod 0440 /etc/sudoers.d/appuser-nopasswd
 
 # Set working directory
 WORKDIR /app
@@ -38,7 +43,7 @@ RUN mkdir -p /var/log/supervisor &&     chown -R appuser:appgroup /var/log/super
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Expose port
-EXPOSE 5000
+EXPOSE 51234
 
 # Define entrypoint (entrypoint.sh is now in /app/entrypoint.sh)
 ENTRYPOINT ["/app/entrypoint.sh"]

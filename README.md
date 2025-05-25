@@ -114,12 +114,12 @@ FLASK_PORT=5000
 
 ## Running with Docker
 
-This application can be built and run as a Docker container. The provided `Dockerfile` sets up the necessary environment, including Nmap, Redis, and all Python dependencies. Supervisor is used to manage the Gunicorn (Flask app), Celery worker, and Celery beat processes.
+This application can be built and run as a Docker container. The provided `Dockerfile` and `docker-compose.yml` sets up the necessary environment, including Nmap, Redis, and all Python dependencies. Supervisor is used to manage the Gunicorn (Flask app), Celery worker, and Celery beat processes.
 
 ### Prerequisites for Docker
 
 - Docker installed on your system.
-- Ensure you have an `.env` file created (you can copy `.env.example`). See "Important Configuration for Docker" below.
+- Ensure you have an `.env` file created (you can copy `.env.docker.example`). See "Important Configuration for Docker" below.
 
 ### Building the Docker Image
 
@@ -136,8 +136,8 @@ Before running the container, you **must** update your `.env` file for the Docke
 1.  **`DATABASE_URL`**: Since SQLite is used and data should persist outside the container, this path should point to a location *inside* the container that will be mounted as a volume. The `Dockerfile` places the application in `/app`. A good value for the container is:
     `DATABASE_URL=sqlite:////app/instance/app.db`
 2.  **`CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND`**: Redis runs inside the same container and is managed by Supervisor. So, these should point to the internal Redis instance:
-    `CELERY_BROKER_URL=redis://localhost:6379/0`
-    `CELERY_RESULT_BACKEND=redis://localhost:6379/0`
+    `CELERY_BROKER_URL=redis://nmapwebui-redis:6379/0`
+    `CELERY_RESULT_BACKEND=redis://nmapwebui-redis:6379/0`
 3.  **`NMAP_REPORTS_DIR`**: This should also point to a path inside the container that will be mounted:
     `NMAP_REPORTS_DIR=/app/instance/reports`
 4.  **`ADMIN_USER`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (Optional for first run)**: For the initial setup, the `entrypoint.sh` script can automatically create an admin user if these environment variables are set.
@@ -153,27 +153,10 @@ Ensure other variables like `SECRET_KEY` are set appropriately.
 To run the Docker container:
 
 ```bash
-docker run -d \
-  --name nmapwebui-container \
-  -p 5000:5000 \
-  --env-file .env \
-  -v ./instance:/app/instance \
-  nmapwebui
+docker compose up
 ```
 
-**Explanation of `docker run` options:**
-
--   `-d`: Run the container in detached mode (in the background).
--   `--name nmapwebui-container`: Assign a name to the container.
--   `-p 5000:5000`: Map port 5000 on the host to port 5000 in the container (where Gunicorn is listening).
--   `--env-file .env`: Load environment variables from the `.env` file located in your project root on the host.
--   `-v ./instance:/app/instance`: Mount the `./instance` directory from your host into the `/app/instance` directory in the container. This is crucial for:
-    -   Persisting the SQLite database (`app.db`).
-    -   Persisting Nmap reports (if stored under `instance/reports` as per default config).
-    Ensure the local `./instance` directory exists or Docker will create it as root.
--   `nmapwebui`: The name of the image you built.
-
-After starting the container, the application should be accessible at `http://localhost:5000`.
+After starting the container, the application should be accessible at `http://localhost:51234`.
 
 ### Accessing Logs
 
