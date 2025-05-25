@@ -53,6 +53,11 @@
                                 <a href="{{ url_for('reports.view', run_id=run.id) }}" class="btn btn-sm btn-primary">
                                     <i class="bi bi-eye"></i> View
                                 </a>
+                                {% if run.report and run.status == 'completed' %}
+                                <a href="{{ url_for('reports.report_pdf', run_id=run.id) }}" class="btn btn-sm btn-danger">
+                                    <i class="bi bi-file-earmark-pdf"></i> PDF
+                                </a>
+                                {% endif %}
                                 {% if run.report and run.report.xml_report_path %}
                                 <a href="{{ url_for('reports.raw_xml', run_id=run.id) }}" class="btn btn-sm btn-secondary">
                                     <i class="bi bi-file-earmark-code"></i> XML
