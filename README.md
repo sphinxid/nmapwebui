@@ -1,173 +1,254 @@
 # NmapWebUI
 
-A web-based application that serves as a user-friendly wrapper for the Nmap network scanner. This application allows authenticated users to manage targets, define and execute Nmap scans, view scan reports, and schedule recurring scans.
+A web-based application that serves as a user-friendly wrapper for the Nmap network scanner. This application allows authenticated users to manage targets, define and execute Nmap scans, view scan reports, and schedule recurring scans through an intuitive web interface.
 
 ## Features
 
-- User Authentication & Authorization
-- User Management
-- Target Group Management
-- Scan Task Creation & Configuration
-- Asynchronous Background Scanning
-- Task Listing & Management
-- Scan Report Display
-- Multiple Scan Runs & Report History
-- Scheduled Scanning
+- **User Authentication & Authorization** - secure login system with role-based access
+- **User Management** - admin interface for managing user accounts
+- **Target Group Management** - organize and manage scan targets efficiently
+- **Scan Task Creation & Configuration** - flexible scan configuration with custom Nmap options
+- **Asynchronous Background Scanning** - non-blocking scan execution using Celery
+- **Task Listing & Management** - monitor and control running and queued scans
+- **Scan Report Display** - comprehensive visualization of scan results
+- **Multiple Scan Runs & Report History** - track scan history and compare results over time
+- **Scheduled Scanning** - automated recurring scans with configurable intervals
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.8 or higher
 - Nmap installed on the system
 - Redis server (for Celery task queue)
-- (optional) Gunicorn or uWSGI for production deployment
-- (optional) user running the flask & celery worker has sudo access without password for the nmap command that requires root privilege
+- (Optional) Gunicorn or uWSGI for production deployment
+- (Optional) The User running the Flask & Celery worker should have sudo access without a password for Nmap commands requiring root privileges
 
-## Installation
+## Manual Installation & Setup
 
-1. Clone the repository:
-```
+### 1. Clone the Repository
+
+```bash
 git clone <repository-url>
 cd nmapwebui
 ```
 
-2. Create a virtual environment and activate it:
-```
+### 2. Create Virtual Environment
+
+```bash
 python -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. Install the required packages:
+### 3. Install Dependencies
+
+```bash
+apt-get install -y --no-install-recommends nmap libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libpangocairo-1.0-0
 ```
+
+```bash
 pip install -r requirements.txt
 ```
 
-4. Set up environment variables:
-```
+### 4. Configure Environment Variables
+
+```bash
 cp .env.example .env
 ```
-Edit the `.env` file and set your configuration values.
 
-5. Initialize the database:
-```
-flask db init
-flask db migrate -m "Initial migration"
-flask db upgrade
-```
+Edit the `.env` file with your configuration:
 
-6. Create an admin user:
-```
-python create_admin.py
-```
-
-## Running the Application
-
-1. Start the Redis server:
-```
-redis-server
-```
-
-2. Start the Celery worker:
-```
-python run_celery.py
-```
-
-3. Start the Celery beat scheduler (for scheduled scans):
-```
-python run_celery_beat.py
-```
-
-4. Run the Flask application:
-```
-python run_app.py
-```
-
-5. Access the application at the URL shown in the console (default: http://127.0.0.1:5000)
-
-## Configuration
-
-The application uses environment variables for configuration. You can set these in the `.env` file:
-
-```
+```bash
 # Flask configuration
 FLASK_APP=run_app.py
 FLASK_ENV=development
 SECRET_KEY=your-secret-key
 
-# must use an absolute path (eg: /home/firman/nmapwebui/instance/app.db)
-DATABASE_URL=sqlite:////home/firman/nmapwebui/instance/app.db
+# Database configuration (use absolute path)
+DATABASE_URL=sqlite:////home/user/nmapwebui/instance/app.db
 
 # Celery configuration
 CELERY_BROKER_URL=redis://localhost:6379/0
 CELERY_RESULT_BACKEND=redis://localhost:6379/0
 
 # Nmap configuration
-NMAP_REPORTS_DIR=instance/reports
+NMAP_REPORTS_DIR=/home/user/nmapwebui/instance/reports
 
 # Server configuration
 FLASK_HOST=0.0.0.0
 FLASK_PORT=5000
 ```
 
-## License
+### 5. Initialize Database
 
-[MIT License](LICENSE)
+```bash
+flask db init
+flask db migrate -m "Initial migration"
+flask db upgrade
+```
 
-## Running with Docker
+### 6. Create Admin User
 
-This application can be built and run as a Docker container. The provided `Dockerfile` and `docker-compose.yml` sets up the necessary environment, including Nmap, Redis, and all Python dependencies. Supervisor is used to manage the Gunicorn (Flask app), Celery worker, and Celery beat processes.
+```bash
+python create_admin.py
+```
 
-### Prerequisites for Docker
+## Running the Application Manually
 
-- Docker installed on your system.
-- Ensure you have an `.env` file created (you can copy `.env.docker.example`). See "Important Configuration for Docker" below.
+Start the required services in separate terminal sessions:
 
-### Building the Docker Image
+### 1. Start Redis Server
 
-To build the Docker image, navigate to the project root directory (where the `Dockerfile` is located) and run:
+```bash
+redis-server
+```
+
+### 2. Start Celery Worker
+
+```bash
+python run_celery.py
+```
+
+### 3. Start Celery Beat Scheduler (for scheduled scans)
+
+```bash
+python run_celery_beat.py
+```
+
+### 4. Start Flask Application
+
+```bash
+python run_app.py
+```
+
+The application will be accessible at `http://127.0.0.1:5000` (or the URL shown in the console).
+
+## Docker Deployment
+
+The application includes Docker support with automated service management using Supervisor.
+
+### Prerequisites
+
+- Docker installed on your system
+- Docker Compose (usually included with Docker Desktop)
+
+### Configuration for Docker
+
+Create and configure your `.env` file (you can copy from `.env.docker.example`):
+
+```bash
+cp .env.docker.example .env
+```
+
+**Important Docker-specific configuration:**
+
+```bash
+# Database - path inside a container with a volume mount
+DATABASE_URL=sqlite:////app/instance/app.db
+
+# Redis - using Docker Compose service name
+CELERY_BROKER_URL=redis://nmapwebui-redis:6379/0
+CELERY_RESULT_BACKEND=redis://nmapwebui-redis:6379/0
+
+# Reports directory - mounted volume path
+NMAP_REPORTS_DIR=/app/instance/reports
+
+# Optional: Auto-create admin user on first run (password minimum 8 characters)
+ADMIN_USER=admin
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=your-secure-password-min-8-chars
+
+# Other required variables
+SECRET_KEY=your-secret-key
+FLASK_HOST=0.0.0.0
+FLASK_PORT=51234
+```
+
+### Building and Running with Docker
+
+#### Option 1: Using Docker Compose (Recommended)
+
+```bash
+docker compose up -d
+```
+
+This will:
+- Build the application image
+- Start Redis service
+- Start the NmapWebUI application with all services managed by Supervisor
+- Expose the application on `http://localhost:51234`
+
+#### Option 2: Manual Docker Build and Run
+
+Build the image:
 
 ```bash
 docker build -t nmapwebui .
 ```
 
-### Important Configuration for Docker
-
-Before running the container, you **must** update your `.env` file for the Docker environment:
-
-1.  **`DATABASE_URL`**: Since SQLite is used and data should persist outside the container, this path should point to a location *inside* the container that will be mounted as a volume. The `Dockerfile` places the application in `/app`. A good value for the container is:
-    `DATABASE_URL=sqlite:////app/instance/app.db`
-2.  **`CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND`**: Redis runs inside the same container and is managed by Supervisor. So, these should point to the internal Redis instance:
-    `CELERY_BROKER_URL=redis://nmapwebui-redis:6379/0`
-    `CELERY_RESULT_BACKEND=redis://nmapwebui-redis:6379/0`
-3.  **`NMAP_REPORTS_DIR`**: This should also point to a path inside the container that will be mounted:
-    `NMAP_REPORTS_DIR=/app/instance/reports`
-4.  **`ADMIN_USER`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (Optional for first run)**: For the initial setup, the `entrypoint.sh` script can automatically create an admin user if these environment variables are set.
-    -   `ADMIN_USER`: Desired username for the admin account.
-    -   `ADMIN_EMAIL`: Email address for the admin account.
-    -   `ADMIN_PASSWORD`: Password for the admin account (must be at least 8 characters).
-    If these are not provided, the `create_admin.py` script (called by `entrypoint.sh`) will not automatically create a user, and you might need to create one manually or ensure one already exists in the database volume. For a fully automated first run, setting these is recommended.
-
-Ensure other variables like `SECRET_KEY` are set appropriately.
-
-### Running the Docker Container
-
-To run the Docker container:
+Run the container:
 
 ```bash
-docker compose up
+docker run -d \
+  --name nmapwebui-container \
+  -p 51234:51234 \
+  --env-file .env \
+  nmapwebui
 ```
 
-After starting the container, the application should be accessible at `http://localhost:51234`.
+### Managing the Docker Container
 
-### Accessing Logs
-
-To view the logs from the running container (which includes output from Supervisor and the services it manages):
+#### View logs:
 
 ```bash
+# All logs
 docker logs nmapwebui-container
+
+# Follow logs in real-time
+docker logs -f nmapwebui-container
+
+# Using Docker Compose
+docker compose logs -f
 ```
 
-To follow the logs in real-time:
+#### Stop the application:
 
 ```bash
-docker logs -f nmapwebui-container
+# Docker Compose
+docker compose down
+
+# Manual container
+docker stop nmapwebui-container
 ```
+
+#### Restart services:
+
+```bash
+# Docker Compose
+docker compose restart
+
+# Manual container
+docker restart nmapwebui-container
+```
+
+## Usage
+
+1. **Access the web interface** at the configured URL
+2. **Log in** with your admin credentials
+3. **Add target groups** to organize your scan targets
+4. **Create scan tasks** with custom Nmap configurations
+5. **Execute scans** manually or schedule them for automatic execution
+6. **View results** in the comprehensive report interface
+7. **Manage users** through the admin interface (if you have admin privileges)
+
+## Architecture
+
+The application consists of several components:
+
+- **Flask Web Application** - main web interface and API
+- **Celery Worker** - handles background scan execution
+- **Celery Beat** - manages scheduled scan tasks
+- **Redis** - message broker and result backend for Celery
+- **SQLite Database** - stores application data (users, targets, scan configurations, results)
+
+## License
+
+MIT License
