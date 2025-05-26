@@ -16,7 +16,7 @@ migrate = Migrate()
 login_manager = LoginManager()
 csrf = CSRFProtect()
 celery = Celery(__name__)
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(timezone=pytz.UTC)
 
 def create_app(config_class=Config, instance_path=None):
     app = Flask(__name__, instance_path=instance_path) if instance_path else Flask(__name__)

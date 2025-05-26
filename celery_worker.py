@@ -1,6 +1,7 @@
 import os
 from app import create_app, celery
 from app.tasks.nmap_tasks import run_nmap_scan  # Import the task explicitly
+from app.tasks.task_processor import process_queued_tasks
 
 # Create a Flask application context
 flask_app = create_app()
