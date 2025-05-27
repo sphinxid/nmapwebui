@@ -5,6 +5,7 @@ from flask_login import LoginManager, current_user
 from flask_wtf.csrf import CSRFProtect
 from celery import Celery
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 import os
 import pytz
 from datetime import datetime
@@ -36,6 +37,16 @@ def create_app(config_class=Config, instance_path=None):
     login_manager.login_message = 'Please log in to access this page.'
     login_manager.login_message_category = 'info'
     
+    # Configure APScheduler with SQLAlchemyJobStore and start it
+    if not scheduler.running:
+        jobstores = {
+            'default': SQLAlchemyJobStore(url=app.config['SQLALCHEMY_DATABASE_URI'])
+        }
+        scheduler.configure(jobstores=jobstores)
+    
+        # Initialize APScheduler
+        scheduler.start()
+        
     # Register blueprints
     from app.controllers.auth import auth_bp
     from app.controllers.main import main_bp
@@ -107,10 +118,6 @@ def create_app(config_class=Config, instance_path=None):
                 'timezone_display': 'UTC'
             }
     
-    # Initialize APScheduler
-    if not scheduler.running:
-        scheduler.start()
-        
     # Initialize scheduled tasks from the database
     # Import here to avoid circular imports
     from app.tasks.scheduler_tasks import initialize_scheduled_tasks

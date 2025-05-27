@@ -151,18 +151,28 @@ def main():
                 else:
                     print(f"{scan_engine.capitalize()} process with PID {scan.nmap_pid} is still running")
             else:
-                print(f"No {scan_engine} PID stored for this scan")
+                print(f"No {scan_engine} PID stored for this scan (ScanRun ID: {scan.id}).")
                 
-                # If the scan has been running for more than 12 hours, it's probably a zombie
-                if run_time > timedelta(hours=12):
-                    print(f"ZOMBIE DETECTED: Scan has been running for more than 12 hours")
-                    is_zombie = True
-                
-                # If no scan processes of the appropriate type are running, it's probably a zombie
-                relevant_processes = nmap_processes if scan_engine == 'nmap' else masscan_processes
-                if not relevant_processes:
-                    print(f"ZOMBIE DETECTED: No {scan_engine} processes are running")
-                    is_zombie = True
+                if scan.status == 'running':
+                    # Primary check: running for >5 mins without a PID
+                    if run_time > timedelta(minutes=5):
+                        print(f"ZOMBIE DETECTED: Scan (ID: {scan.id}) is 'running' for {run_time} without a PID (threshold: 5 minutes).")
+                        is_zombie = True
+                    # Secondary check: running for >12 hours without a PID (if not caught by 5-min rule)
+                    #elif run_time > timedelta(hours=12): 
+                    #    print(f"ZOMBIE DETECTED: Scan (ID: {scan.id}) is 'running' for {run_time} without a PID (threshold: 12 hours).")
+                    #    is_zombie = True
+                    # Tertiary check: running, no PID, and no relevant scan processes on the entire system
+                    else:
+                        # This assumes nmap_processes and masscan_processes are lists of PIDs fetched earlier in the script
+                        # representing all running Nmap/Masscan PIDs on the system.
+                        relevant_system_processes = nmap_processes if scan_engine == 'nmap' else masscan_processes
+                        if not relevant_system_processes:
+                            print(f"ZOMBIE DETECTED: Scan (ID: {scan.id}) is 'running' with no PID, and no {scan_engine} processes found on system.")
+                            is_zombie = True
+                # If scan.status is 'queued' and no PID, it's not treated as a zombie Nmap process here.
+                # Such cases might be handled by cleanup_stuck_tasks.py or indicate an issue
+                # with the task processor not starting the scan and storing a PID.
             
             # Mark as failed if it's a zombie
             if is_zombie:
