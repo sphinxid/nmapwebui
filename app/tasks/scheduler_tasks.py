@@ -111,7 +111,7 @@ def check_missed_scheduled_runs():
                     # Calculate days since the scheduled day this week
                     days_diff = now_utc.weekday() - day_of_week
                     if days_diff < 0:  # Scheduled day is later this week
-                        days_diff += 7  # Check last week
+                        days_diff += 7
                     
                     # Create a datetime for this week's scheduled run
                     this_week_scheduled = now_utc - timedelta(days=days_diff)
@@ -435,17 +435,21 @@ def schedule_task(task):
     elif task.schedule_type == 'interval':
         hours = schedule_data.get('hours', 24)  # Default to daily
         
-        # Schedule the task to run immediately and then repeat at the specified interval
+        # Calculate the first run time to be 'interval' from now (in UTC)
+        now_utc = datetime.now(pytz.UTC)
+        start_date_utc = now_utc + timedelta(hours=hours)
+        
         scheduler.add_job(
             func=create_scheduled_scan_run,
             trigger='interval',
             hours=hours,
             id=job_id,
             args=[task.id],
+            start_date=start_date_utc,  # Set the explicit start date
             misfire_grace_time=3600  # Allow 1 hour for misfires
         )
         
-        logger.info(f"Interval task scheduled to run immediately and repeat every {hours} hours")
+        logger.info(f"Interval task {job_id} scheduled to start at {start_date_utc} and repeat every {hours} hours")
         
     
     return True

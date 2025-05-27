@@ -16,6 +16,7 @@ from flask import current_app
 import nmap
 from app.utils.sanitize import sanitize_nmap_command, sanitize_nmap_targets
 from app.utils.validators import validate_nmap_args
+from app.utils.decorators import redis_task_lock
 
 # Global dictionary to track active processes
 active_processes = {}
@@ -93,9 +94,11 @@ def exit_handler():
 atexit.register(exit_handler)
 
 @shared_task(bind=True)
-def run_nmap_scan(self, scan_run_id):
+@redis_task_lock(key_template="celery_lock:run_nmap_scan:task_id_{scan_task_id_for_lock}", expire=43200) # 12 hours expire
+def run_nmap_scan(self, scan_run_id, scan_task_id_for_lock):
     """
-    Run an Nmap scan as a background Celery task
+    Run an Nmap scan as a background Celery task.
+    scan_task_id_for_lock is the ID of the parent ScanTask, used for locking to prevent concurrent runs of the same conceptual task.
     """
     # Import Flask app and create application context
     from app import create_app

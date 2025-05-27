@@ -99,7 +99,7 @@ def process_queued_tasks():
                 db.session.commit()
                 
                 # Send the task to Celery
-                celery.send_task('app.tasks.nmap_tasks.run_nmap_scan', args=[task.id])
+                celery.send_task('app.tasks.nmap_tasks.run_nmap_scan', args=[task.id, task.task_id])
                 
             if queued_tasks:
                 logger.info(f"Started {len(queued_tasks)} queued tasks. {running_tasks_count + len(queued_tasks)}/{max_concurrent_tasks} concurrent tasks now running.")
