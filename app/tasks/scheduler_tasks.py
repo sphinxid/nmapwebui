@@ -272,7 +272,8 @@ def check_missed_scheduled_runs():
                     logger.info(f"Created scan run {scan_run.id} for missed schedule of task {task.id}")
 
                     # Queue the task for processing
-                    run_nmap_scan.apply_async(args=[scan_run.id], countdown=0)
+                    # Pass the task.id as the second argument (scan_task_id_for_lock)
+                    run_nmap_scan.apply_async(args=[scan_run.id, task.id], countdown=0)
                     logger.info(f"Queued Nmap scan for run {scan_run.id} (missed schedule)")
                 else:
                     logger.info(f"Task {task.id} ({task.name}) has already run after {should_have_run_after}, no action needed")

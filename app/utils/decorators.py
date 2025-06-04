@@ -1,11 +1,14 @@
 from functools import wraps
-from flask import flash, redirect, url_for
+from flask import flash, redirect, url_for, current_app # current_app is already here
 from flask_login import current_user
 import functools
 import logging
 import os
 import redis
 import inspect
+
+from app import db, create_app # Assuming db and create_app are exposed from your 'app' package
+from app.models.task import ScanRun
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ def redis_task_lock(key_template=None, expire=300, blocking=False, blocking_time
     """
     CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
     redis_client = redis.from_url(CELERY_BROKER_URL)
-    
+
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -58,9 +61,7 @@ def redis_task_lock(key_template=None, expire=300, blocking=False, blocking_time
                 try:
                     lock_key_val = key_template.format(task_name=task_name, **all_args_dict)
                 except KeyError as e:
-                    logger.error(f"KeyError in key_template for task {task_name}: {e}. "
-                                 f"Ensure key_template variables match function arguments. "
-                                 f"Available args for template: {list(all_args_dict.keys())}")
+                    logger.error("KeyError in key_template for task %s: %s. Ensure key_template variables match function arguments. Available args for template: %s", task_name, e, list(all_args_dict.keys()))
                     raise ValueError(f"Invalid key_template for task {task_name}. Missing argument in template: {e}") from e
 
             lock = redis_client.lock(lock_key_val, timeout=expire)
@@ -68,14 +69,41 @@ def redis_task_lock(key_template=None, expire=300, blocking=False, blocking_time
             try:
                 got_lock = lock.acquire(blocking=blocking, blocking_timeout=blocking_timeout)
                 if got_lock:
-                    logger.info(f"Acquired lock {lock_key_val} for task {task_name}")
+                    logger.info("Acquired lock %s for task %s", lock_key_val, task_name)
                     return func(*args, **kwargs)
                 else:
-                    logger.warning(f"Could not acquire lock {lock_key_val} for task {task_name}, skipping execution.")
+                    logger.warning("Could not acquire lock %s for task %s, skipping execution.", lock_key_val, task_name)
+
+                    # Delete the ScanRun record if this is a scan task
+                    if 'scan_run_id' in all_args_dict:
+                        try:
+
+                            # Create app context if needed
+                            app_context = None
+                            if not current_app:
+                                app = create_app()
+                                app_context = app.app_context()
+                                app_context.push()
+
+                            # Delete the ScanRun record
+                            scan_run_id = all_args_dict['scan_run_id']
+                            scan_run = ScanRun.query.get(scan_run_id)
+                            if scan_run:
+                                logger.info("Deleting ScanRun record %s due to lock acquisition failure", scan_run_id)
+                                db.session.delete(scan_run)
+                                db.session.commit()
+
+                            # Clean up app context if we created one
+                            if app_context:
+                                app_context.pop()
+                        except Exception as ex:
+                            logger.error("Error deleting ScanRun record: %s", str(ex))
+
                     return None # Task did not run
             finally:
                 if got_lock:
                     lock.release()
-                    logger.info(f"Released lock {lock_key_val} for task {task_name}")
+                    logger.info("Released lock %s for task %s", lock_key_val, task_name)
         return wrapper
     return decorator
+    
