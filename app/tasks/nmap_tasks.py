@@ -30,7 +30,7 @@ def cleanup_task(scan_run_id, process=None):
     with app.app_context():
         try:
             scan_run = ScanRun.query.get(scan_run_id)
-            if scan_run and scan_run.status == 'running':
+            if scan_run and scan_run.status in ['starting', 'running']:
                 print(f"Cleaning up task for scan run {scan_run_id}")
                 scan_run.status = 'failed'
                 scan_run.completed_at = datetime.utcnow()
@@ -119,8 +119,8 @@ def run_nmap_scan(self, scan_run_id, scan_task_id_for_lock):
         if not scan_run:
             return {'status': 'failed', 'message': 'Scan run not found'}
     
-        # Update scan run status
-        scan_run.status = 'running'
+        # Update scan run status to 'starting'
+        scan_run.status = 'starting'
         scan_run.celery_task_id = self.request.id
         scan_run.started_at = datetime.utcnow()
         db.session.commit()
@@ -302,9 +302,11 @@ def run_nmap_scan(self, scan_run_id, scan_task_id_for_lock):
             with app.app_context():
                 scan_run = ScanRun.query.get(scan_run_id)
                 if scan_run:
+                    # Update status from 'starting' to 'running' now that the nmap process has started
+                    scan_run.status = 'running'
                     scan_run.nmap_pid = process.pid
                     db.session.commit()
-                    print(f"Stored nmap PID {process.pid} for scan run {scan_run_id}")
+                    print(f"Stored nmap PID {process.pid} for scan run {scan_run_id} and updated status to running")
         except Exception as e:
             print(f"Error starting Nmap process: {str(e)}")
             with app.app_context():

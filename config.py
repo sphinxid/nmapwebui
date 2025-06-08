@@ -10,7 +10,7 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
     
     # SQLAlchemy configuration
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:////home/firman/coding/python/cekin/instance/app.db')
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:////home/firman/coding/python/nmapwebui/instance/app.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Celery configuration

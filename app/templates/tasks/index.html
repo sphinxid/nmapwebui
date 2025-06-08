@@ -78,6 +78,8 @@
                                 <span class="badge bg-danger">Failed</span>
                                 {% elif task.latest_run.status == 'running' %}
                                 <span class="badge bg-primary">Running</span>
+                                {% elif task.latest_run.status == 'starting' %}
+                                <span class="badge bg-info">Starting...</span>
                                 {% elif task.latest_run.status == 'queued' %}
                                 <span class="badge bg-secondary">Queued</span>
                                 {% endif %}

@@ -204,6 +204,8 @@
                                 <td>
                                     {% if run.status == 'queued' %}
                                     <span class="badge bg-secondary">Queued</span>
+                                    {% elif run.status == 'starting' %}
+                                    <span class="badge bg-info">Initializing...</span>
                                     {% elif run.status == 'running' %}
                                     <span class="badge bg-primary">Running ({{ run.progress }}%)</span>
                                     <div class="progress mt-1" style="height: 5px;">
@@ -302,6 +304,8 @@
                             const statusCell = row.querySelector('td:nth-child(2)');
                             if (data.status === 'queued') {
                                 statusCell.innerHTML = '<span class="badge bg-secondary">Queued</span>';
+                            } else if (data.status === 'starting') {
+                                statusCell.innerHTML = '<span class="badge bg-info">Starting...</span>';
                             } else if (data.status === 'running') {
                                 statusCell.innerHTML = `
                                     <span class="badge bg-primary">Running (${data.progress}%)</span>
