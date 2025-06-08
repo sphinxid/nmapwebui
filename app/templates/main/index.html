@@ -81,6 +81,8 @@
                                 <td>
                                     {% if run.status == 'queued' %}
                                     <span class="badge bg-secondary">Queued</span>
+                                    {% elif run.status == 'starting' %}
+                                    <span class="badge bg-info">Starting...</span>
                                     {% elif run.status == 'running' %}
                                     <span class="badge bg-primary">Running ({{ run.progress }}%)</span>
                                     <div class="progress mt-1" style="height: 5px;">

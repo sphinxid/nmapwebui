@@ -22,6 +22,7 @@ def get_status_color(status):
     """Return ANSI color code based on status"""
     colors = {
         'queued': '\033[33m',  # Yellow
+        'starting': '\033[35m',  # Magenta
         'running': '\033[36m',  # Cyan
         'completed': '\033[32m',  # Green
         'failed': '\033[31m'    # Red
@@ -86,8 +87,8 @@ def main():
         now_utc = datetime.now(pytz.UTC)
         print(f"Current UTC time: {now_utc.strftime('%Y-%m-%d %H:%M:%S')}")
         
-        # Get all running scan runs
-        running_scans = ScanRun.query.filter_by(status='running').all()
+        # Get all running and starting scan runs
+        running_scans = ScanRun.query.filter(ScanRun.status.in_(['starting', 'running'])).all()
         
         print("\n" + "=" * 80)
         print(f"NmapWebUI Zombie Task Cleanup - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -153,7 +154,7 @@ def main():
             else:
                 print(f"No {scan_engine} PID stored for this scan (ScanRun ID: {scan.id}).")
                 
-                if scan.status == 'running':
+                if scan.status in ['starting', 'running']:
                     # Primary check: running for >5 mins without a PID
                     if run_time > timedelta(minutes=5):
                         print(f"ZOMBIE DETECTED: Scan (ID: {scan.id}) is 'running' for {run_time} without a PID (threshold: 5 minutes).")

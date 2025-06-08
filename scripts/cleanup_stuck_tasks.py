@@ -42,7 +42,7 @@ def cleanup_stuck_tasks(hours=2, dry_run=False):
         
         # Find stuck tasks
         stuck_tasks = ScanRun.query.filter(
-            ScanRun.status.in_(['running', 'queued']),
+            ScanRun.status.in_(['starting', 'running', 'queued']),
             ScanRun.started_at < cutoff_time
         ).all()
         
