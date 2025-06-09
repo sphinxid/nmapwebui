@@ -3,7 +3,6 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager, current_user
 from flask_wtf.csrf import CSRFProtect
-from celery import Celery
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 import os
@@ -16,7 +15,6 @@ db = SQLAlchemy()
 migrate = Migrate()
 login_manager = LoginManager()
 csrf = CSRFProtect()
-celery = Celery(__name__)
 scheduler = BackgroundScheduler(timezone=pytz.UTC)
 
 def create_app(config_class=Config, instance_path=None):
@@ -28,9 +26,6 @@ def create_app(config_class=Config, instance_path=None):
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
-    
-    # Configure Celery
-    celery.conf.update(app.config)
     
     # Configure login
     login_manager.login_view = 'auth.login'
@@ -46,6 +41,24 @@ def create_app(config_class=Config, instance_path=None):
     
         # Initialize APScheduler
         scheduler.start()
+
+        # Initialize the worker pool (if not testing)
+        if not app.testing:
+            from . import worker_manager # Import here to avoid circular dependencies at top level
+            worker_manager.initialize_worker_pool()
+
+            # Add job for processing queued tasks
+            from app.tasks.task_processor import process_queued_tasks
+            if not scheduler.get_job('process_queued_nmap_tasks'):
+                scheduler.add_job(
+                    id='process_queued_nmap_tasks',
+                    func=process_queued_tasks,
+                    trigger='interval',
+                    seconds=15,  # Run every 15 seconds
+                    replace_existing=True
+                )
+            else:
+                pass
         
     # Register blueprints
     from app.controllers.auth import auth_bp
@@ -82,10 +95,10 @@ def create_app(config_class=Config, instance_path=None):
                 user = User.query.get(current_user.id)
                 if user and user.timezone:
                     tz = user.timezone
-                    app.logger.info(f"User timezone from database: {tz}")
+        
         except Exception as e:
             # Handle case when current_user is not available
-            app.logger.warning(f"Could not access current_user in context processor: {str(e)}")
+            pass
         
         try:
             # Get current time in the user's timezone
@@ -104,7 +117,6 @@ def create_app(config_class=Config, instance_path=None):
                 formatted_offset = f"{offset_hours}:{offset_minutes}"
             
             timezone_display = f"UTC{formatted_offset}"
-            app.logger.info(f"Timezone display: {timezone_display} for timezone {tz}")
             
             return {
                 'now': now,
@@ -112,7 +124,6 @@ def create_app(config_class=Config, instance_path=None):
                 'timezone_display': timezone_display
             }
         except Exception as e:
-            app.logger.error(f"Error in timezone context processor: {str(e)}")
             return {
                 'user_timezone': 'UTC',
                 'timezone_display': 'UTC'
@@ -124,9 +135,7 @@ def create_app(config_class=Config, instance_path=None):
     
     # Create a function to initialize scheduled tasks
     def init_scheduled_tasks():
-        app.logger.info("Initializing scheduled tasks...")
         initialize_scheduled_tasks()
-        app.logger.info("Scheduled tasks initialized successfully")
     
     # Register a function to run after the application context is set up
     with app.app_context():
@@ -134,8 +143,7 @@ def create_app(config_class=Config, instance_path=None):
         try:
             init_scheduled_tasks()
         except Exception as e:
-            app.logger.error(f"Error initializing scheduled tasks: {str(e)}")
-            app.logger.info("Scheduled tasks will be initialized on first request")
+            pass
     
     # Ensure instance folders exist
     os.makedirs(app.config['NMAP_REPORTS_DIR'], exist_ok=True)

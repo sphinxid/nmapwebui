@@ -58,7 +58,6 @@ def cleanup_stuck_tasks(hours=2, dry_run=False):
                 'task_id': task.task_id,
                 'status': task.status,
                 'started_at': task.started_at.isoformat() if task.started_at else None,
-                'celery_task_id': task.celery_task_id,
                 'nmap_pid': task.nmap_pid
             }
             
@@ -80,15 +79,6 @@ def cleanup_stuck_tasks(hours=2, dry_run=False):
                         print(f"  Process with PID {task.nmap_pid} not found")
                     except Exception as e:
                         print(f"  Error killing process: {str(e)}")
-                
-                # If the task has a Celery task ID, attempt to revoke it
-                if task.celery_task_id:
-                    try:
-                        from app import celery
-                        celery.control.revoke(task.celery_task_id, terminate=True, signal='SIGKILL')
-                        print(f"  Revoked Celery task {task.celery_task_id}")
-                    except Exception as e:
-                        print(f"  Error revoking Celery task: {str(e)}")
                 
                 print(f"  Updated task {task.id} status to 'failed'")
         

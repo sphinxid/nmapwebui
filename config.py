@@ -1,5 +1,4 @@
 import os
-import pytz
 from datetime import timedelta
 from dotenv import load_dotenv
 
@@ -8,14 +7,12 @@ class Config:
     load_dotenv()
     # Flask configuration
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
+
+    NMAP_WORKER_POOL_SIZE = int(os.environ.get('NMAP_WORKER_POOL_SIZE', 2))
     
     # SQLAlchemy configuration
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:////home/firman/coding/python/nmapwebui/instance/app.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    
-    # Celery configuration
-    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-    CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
     
     # Session configuration
     PERMANENT_SESSION_LIFETIME = timedelta(hours=2)

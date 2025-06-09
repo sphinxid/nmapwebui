@@ -1,352 +1,375 @@
 {% extends 'base.html' %}
+{% from "_formhelpers.html" import render_field, render_submit_field, render_textarea_field, render_checkbox_field, render_select_field %}
 
-{% block title %}View Scan Task{% endblock %}
+{% block title %}{{ title }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1><i class="bi bi-list-task"></i> Scan Task: {{ scan_task.name }}</h1>
-    <div>
-        <a href="{{ url_for('tasks.run', id=scan_task.id) }}" class="btn btn-success">
-            <i class="bi bi-play"></i> Run Now
-        </a>
-        <a href="{{ url_for('tasks.edit', id=scan_task.id) }}" class="btn btn-warning">
-            <i class="bi bi-pencil"></i> Edit
-        </a>
-        {% if scan_task.is_scheduled %}
-        <a href="{{ url_for('tasks.schedule', id=scan_task.id) }}" class="btn btn-info">
-            <i class="bi bi-pencil"></i> Edit Schedule
-        </a>
-        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#unscheduleModal">
-            <i class="bi bi-calendar-x"></i> Unschedule
-        </button>
-        {% else %}
-        <a href="{{ url_for('tasks.schedule', id=scan_task.id) }}" class="btn btn-primary">
-            <i class="bi bi-calendar-plus"></i> Schedule
-        </a>
-        {% endif %}
-        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
-            <i class="bi bi-trash"></i> Delete
-        </button>
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1><i class="bi bi-list-task me-2"></i>{{ title }}</h1>
+            <p class="text-muted mb-0">Task ID: {{ scan_task.id }}</p>
+        </div>
+        <div>
+            <a href="{{ url_for('tasks.run', id=scan_task.id) }}" class="btn btn-success me-1">
+                <i class="bi bi-play-fill"></i> Run Now
+            </a>
+            <a href="{{ url_for('tasks.edit', id=scan_task.id) }}" class="btn btn-warning me-1">
+                <i class="bi bi-pencil-square"></i> Edit
+            </a>
+            {% if scan_task.is_scheduled %}
+            <a href="{{ url_for('tasks.schedule', id=scan_task.id) }}" class="btn btn-info me-1">
+                <i class="bi bi-calendar-check"></i> Edit Schedule
+            </a>
+            <button type="button" class="btn btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#unscheduleModal">
+                <i class="bi bi-calendar-x"></i> Unschedule
+            </button>
+            {% else %}
+            <a href="{{ url_for('tasks.schedule', id=scan_task.id) }}" class="btn btn-primary me-1">
+                <i class="bi bi-calendar-plus"></i> Schedule
+            </a>
+            {% endif %}
+            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                <i class="bi bi-trash"></i> Delete
+            </button>
+        </div>
     </div>
-</div>
 
-<!-- Delete Confirmation Modal -->
-<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="deleteModalLabel">Confirm Delete</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                Are you sure you want to delete the scan task <strong>{{ scan_task.name }}</strong>?
-                This will also delete all scan reports associated with this task.
-                This action cannot be undone.
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <form action="{{ url_for('tasks.delete', id=scan_task.id) }}" method="POST">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-danger">Delete</button>
-                </form>
+    <!-- Delete Confirmation Modal -->
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteModalLabel">Confirm Delete</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    Are you sure you want to delete the scan task <strong>{{ scan_task.name }}</strong>?
+                    This will also delete all scan reports associated with this task.
+                    This action cannot be undone.
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <form action="{{ url_for('tasks.delete', id=scan_task.id) }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-danger">Delete</button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Unschedule Confirmation Modal -->
-{% if scan_task.is_scheduled %}
-<div class="modal fade" id="unscheduleModal" tabindex="-1" aria-labelledby="unscheduleModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="unscheduleModalLabel">Confirm Unschedule</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                Are you sure you want to remove the schedule for <strong>{{ scan_task.name }}</strong>?
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <form action="{{ url_for('tasks.unschedule', id=scan_task.id) }}" method="POST">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-primary">Unschedule</button>
-                </form>
+    <!-- Unschedule Confirmation Modal -->
+    {% if scan_task.is_scheduled %}
+    <div class="modal fade" id="unscheduleModal" tabindex="-1" aria-labelledby="unscheduleModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="unscheduleModalLabel">Confirm Unschedule</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    Are you sure you want to remove the schedule for <strong>{{ scan_task.name }}</strong>?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <form action="{{ url_for('tasks.unschedule', id=scan_task.id) }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-primary">Unschedule</button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
-</div>
-{% endif %}
+    {% endif %}
 
-<div class="row">
-    <div class="col-md-6">
-        <div class="card shadow-sm mb-4">
-            <div class="card-header bg-light">
-                <h5 class="mb-0">Task Details</h5>
-            </div>
-            <div class="card-body">
-                <div class="row mb-3">
-                    <div class="col-md-4 fw-bold">Name:</div>
-                    <div class="col-md-8">{{ scan_task.name }}</div>
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Task Details</h5>
                 </div>
-                <div class="row mb-3">
-                    <div class="col-md-4 fw-bold">Description:</div>
-                    <div class="col-md-8">{{ scan_task.description or 'No description' }}</div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-md-4 fw-bold">Scan Profile:</div>
-                    <div class="col-md-8">
-                        {% if scan_task.scan_profile == 'custom' %}
-                        <span class="badge bg-warning text-dark">Custom</span>
-                        {% else %}
-                        <span class="badge bg-info">{{ scan_task.scan_profile.replace('_', ' ').title() }}</span>
+                <div class="card-body">
+                    <dl class="row">
+                        <dt class="col-sm-4">Name:</dt>
+                        <dd class="col-sm-8">{{ scan_task.name }}</dd>
+
+                        <dt class="col-sm-4">Description:</dt>
+                        <dd class="col-sm-8">{{ scan_task.description | nl2br if scan_task.description else 'N/A' }}</dd>
+
+                        <dt class="col-sm-4">Scan Profile:</dt>
+                        <dd class="col-sm-8">{{ scan_task.scan_profile or "Default Profile" }}{% if scan_task.custom_args %} <span class="badge bg-info text-dark">Custom Args</span>{% endif %}</dd>
+
+                        {% if scan_task.scan_profile == 'custom' and scan_task.custom_args %}
+                        <dt class="col-sm-4">Custom Arguments:</dt>
+                        <dd class="col-sm-8"><code>{{ scan_task.custom_args }}</code></dd>
                         {% endif %}
-                    </div>
-                </div>
-                {% if scan_task.scan_profile == 'custom' and scan_task.custom_args %}
-                <div class="row mb-3">
-                    <div class="col-md-4 fw-bold">Custom Arguments:</div>
-                    <div class="col-md-8">
-                        <code>{{ scan_task.custom_args }}</code>
-                    </div>
-                </div>
-                {% endif %}
-                <div class="row mb-3">
-                    <div class="col-md-4 fw-bold">Created:</div>
-                    <div class="col-md-8">
-                        {{ scan_task.created_at|format_datetime('%Y-%m-%d %H:%M') }}
-                        <small class="text-muted">({{ scan_task.created_at|timeago }})</small>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-md-4 fw-bold">Last Updated:</div>
-                    <div class="col-md-8">
-                        {{ scan_task.updated_at|format_datetime('%Y-%m-%d %H:%M') }}
-                        <small class="text-muted">({{ scan_task.updated_at|timeago }})</small>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-md-4 fw-bold">Schedule:</div>
-                    <div class="col-md-8">
-                        {% if scan_task.is_scheduled %}
-                        <span class="badge bg-success">
-                            {% if scan_task.schedule_type == 'daily' %}
-                            Daily at {{ scan_task.get_schedule_data().get('hour', 0) }}:{{ '%02d' % scan_task.get_schedule_data().get('minute', 0) }}
-                            {% elif scan_task.schedule_type == 'weekly' %}
-                            Weekly on 
-                            {% set days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] %}
-                            {{ days[scan_task.get_schedule_data().get('day_of_week', 0)] }} at {{ scan_task.get_schedule_data().get('hour', 0) }}:{{ '%02d' % scan_task.get_schedule_data().get('minute', 0) }}
-                            {% elif scan_task.schedule_type == 'monthly' %}
-                            Monthly on day {{ scan_task.get_schedule_data().get('day', 1) }} at {{ scan_task.get_schedule_data().get('hour', 0) }}:{{ '%02d' % scan_task.get_schedule_data().get('minute', 0) }}
-                            {% elif scan_task.schedule_type == 'interval' %}
-                            Every {{ scan_task.get_schedule_data().get('hours', 24) }} hours
+                        
+                        <dt class="col-sm-4">Scheduled:</dt>
+                        <dd class="col-sm-8">
+                            {% if scan_task.is_scheduled %}
+                                <span class="badge bg-success">Yes</span> - {{ scan_task.get_schedule_display(user_timezone) }}
+                            {% else %}
+                                <span class="badge bg-secondary">No</span>
                             {% endif %}
-                        </span>
-                        {% else %}
-                        <span class="badge bg-secondary">Not Scheduled</span>
-                        {% endif %}
-                    </div>
+                        </dd>
+
+                        <dt class="col-sm-4">Max Reports:</dt>
+                        <dd class="col-sm-8">
+                            {% if scan_task.use_global_max_reports %}
+                                Global Setting ({{ scan_task.get_max_reports() }})
+                            {% else %}
+                                {{ scan_task.max_reports if scan_task.max_reports is not none else 'Unlimited' }}
+                            {% endif %}
+                        </dd>
+
+                        <dt class="col-sm-4">Created At:</dt>
+                        <dd class="col-sm-8">{{ format_datetime(scan_task.created_at, timezone_str=user_timezone) }} ({{ timezone_display }})</dd>
+                        
+                        <dt class="col-sm-4">Last Updated:</dt>
+                        <dd class="col-sm-8">{{ format_datetime(scan_task.updated_at, timezone_str=user_timezone) }} ({{ timezone_display }})</dd>
+                    </dl>
+                </div>
+            </div>
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Target Groups</h5>
+                </div>
+                <div class="card-body">
+                    {% if scan_task.target_groups %}
+                        <div class="list-group">
+                        {% for group in scan_task.target_groups %}
+                            <a href="{{ url_for('targets.view', id=group.id) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                {{ group.name }}
+                                <span class="badge bg-primary rounded-pill">{{ group.targets_count }} targets</span>
+                            </a>
+                        {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted">No target groups associated with this task. 
+                            <a href="{{ url_for('tasks.edit', id=scan_task.id) }}">Edit task to add groups</a>.
+                        </p>
+                    {% endif %}
                 </div>
             </div>
         </div>
-        
-        <div class="card shadow-sm mb-4">
-            <div class="card-header bg-light">
-                <h5 class="mb-0">Target Groups</h5>
-            </div>
-            <div class="card-body">
-                {% if scan_task.target_groups %}
-                <div class="list-group">
-                    {% for group in scan_task.target_groups %}
-                    <a href="{{ url_for('targets.view', id=group.id) }}" class="list-group-item list-group-item-action">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h5 class="mb-1">{{ group.name }}</h5>
-                            <small>{{ group.targets.count() }} targets</small>
-                        </div>
-                        <p class="mb-1">{{ group.description|truncate(100) if group.description else 'No description' }}</p>
-                    </a>
-                    {% endfor %}
+
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Scan History</h5>
+                     <small class="text-muted">Showing {{ scan_runs_pagination.items|length }} of {{ scan_runs_pagination.total }} runs</small>
                 </div>
-                {% else %}
-                <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-triangle"></i> No target groups associated with this task.
-                    <a href="{{ url_for('tasks.edit', id=scan_task.id) }}">Add target groups</a>.
+                <div class="card-body">
+                    {% if scan_runs_pagination.items %}
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Status</th>
+                                    <th>Progress</th>
+                                    <th>Started</th>
+                                    <th>Completed</th>
+                                    <th>Duration</th>
+                                    <th>Error</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for run in scan_runs_pagination.items %}
+                                <tr id="scan-run-{{ run.id }}" {% if run.status == 'running' or run.status == 'queued' %}class="table-active"{% endif %}>
+                                    <td>{{ run.id }}</td>
+                                    <td>
+                                        <span class="badge 
+                                            {% if run.status == 'completed' %}bg-success
+                                            {% elif run.status == 'running' %}bg-primary
+                                            {% elif run.status == 'queued' %}bg-info text-dark
+                                            {% elif run.status == 'failed' %}bg-danger
+                                            {% elif run.status == 'stopped' %}bg-warning text-dark
+                                            {% else %}bg-secondary{% endif %}">
+                                            {{ run.status | capitalize }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if run.status == 'running' and run.progress is not none %}
+                                        <div class="progress" style="height: 20px; min-width: 80px;">
+                                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: {{ run.progress }}%;" 
+                                                 aria-valuenow="{{ run.progress }}" aria-valuemin="0" aria-valuemax="100">{{ run.progress }}%</div>
+                                        </div>
+                                        {% elif run.status == 'completed' %}
+                                            100%
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ format_datetime(run.started_at, format_str='%Y-%m-%d %H:%M', timezone_str=user_timezone) if run.started_at else 'N/A' }}</td>
+                                    <td>{{ format_datetime(run.completed_at, format_str='%Y-%m-%d %H:%M', timezone_str=user_timezone) if run.completed_at else 'N/A' }}</td>
+                                    <td>{{ run.duration_human_readable() if run.started_at and run.completed_at else 'N/A' }}</td>
+                                    <td class="text-danger" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{run.error_message if run.error_message else ''}}">
+                                        {{ run.error_message if run.error_message else '' }}
+                                    </td>
+                                    <td>
+                                        {% if run.status == 'completed' and run.get_report_id() %}
+                                            <a href="{{ url_for('reports.view', run_id=run.id) }}" class="btn btn-sm btn-outline-primary" title="View Report">
+                                                <i class="bi bi-file-earmark-text"></i>
+                                            </a>
+                                        {% elif run.status == 'running' or run.status == 'queued' %}
+                                             <button type="button" class="btn btn-sm btn-outline-warning stop-scan-btn" data-run-id="{{ run.id }}" title="Stop Scan">
+                                                <i class="bi bi-stop-circle"></i>
+                                             </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if scan_runs_pagination.pages > 1 %}
+                    <nav aria-label="Scan runs navigation" class="mt-3">
+                        <ul class="pagination justify-content-center flex-wrap">
+                            <li class="page-item {% if not scan_runs_pagination.has_prev %}disabled{% endif %}">
+                                <a class="page-link" href="{{ url_for('tasks.view', id=scan_task.id, page=scan_runs_pagination.prev_num) }}">Previous</a>
+                            </li>
+                            {% for page_num in scan_runs_pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                                {% if page_num %}
+                                    <li class="page-item {% if scan_runs_pagination.page == page_num %}active{% endif %}">
+                                        <a class="page-link" href="{{ url_for('tasks.view', id=scan_task.id, page=page_num) }}">{{ page_num }}</a>
+                                    </li>
+                                {% else %}
+                                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                                {% endif %}
+                            {% endfor %}
+                            <li class="page-item {% if not scan_runs_pagination.has_next %}disabled{% endif %}">
+                                <a class="page-link" href="{{ url_for('tasks.view', id=scan_task.id, page=scan_runs_pagination.next_num) }}">Next</a>
+                            </li>
+                        </ul>
+                    </nav>
+                    {% endif %}
+
+                    {% else %}
+                    <div class="alert alert-info" role="alert">
+                        No scan history found for this task.
+                    </div>
+                    {% endif %}
                 </div>
-                {% endif %}
             </div>
         </div>
     </div>
     
-    <div class="col-md-6">
-        <div class="card shadow-sm">
-            <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Scan History</h5>
-                <small class="text-muted">Showing latest {{ scan_task.get_max_reports() }} runs</small>
-            </div>
-            <div class="card-body">
-                {% if scan_runs %}
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Status</th>
-                                <th>Started</th>
-                                <th>Completed</th>
-                                <th>Open Ports</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for run in scan_runs %}
-                            <tr id="scan-run-{{ run.id }}" class="{% if run.status in ['queued', 'running'] %}table-active{% endif %}">
-                                <td>{{ run.id }}</td>
-                                <td>
-                                    {% if run.status == 'queued' %}
-                                    <span class="badge bg-secondary">Queued</span>
-                                    {% elif run.status == 'starting' %}
-                                    <span class="badge bg-info">Initializing...</span>
-                                    {% elif run.status == 'running' %}
-                                    <span class="badge bg-primary">Running ({{ run.progress }}%)</span>
-                                    <div class="progress mt-1" style="height: 5px;">
-                                        <div class="progress-bar" role="progressbar" style="width: {{ run.progress }}%;" aria-valuenow="{{ run.progress }}" aria-valuemin="0" aria-valuemax="100"></div>
-                                    </div>
-                                    {% elif run.status == 'completed' %}
-                                    <span class="badge bg-success">Completed</span>
-                                    {% elif run.status == 'failed' %}
-                                    <span class="badge bg-danger">Failed</span>
-                                    {% endif %}
-                                </td>
-                                <td>{{ run.started_at|format_datetime('%Y-%m-%d %H:%M') }}</td>
-                                <td>{{ run.completed_at|format_datetime('%Y-%m-%d %H:%M') if run.completed_at else '-' }}</td>
-                                <td>
-                                    {% if run.status == 'completed' and run.report %}
-                                        {% if run.open_ports_count > 0 %}
-                                        <span class="badge bg-warning text-dark">{{ run.open_ports_count }} open ports</span>
-                                        {% else %}
-                                        <span class="badge bg-secondary">No open ports</span>
-                                        {% endif %}
-                                    {% else %}
-                                    -
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if run.status == 'completed' and run.report %}
-                                    <a href="{{ url_for('reports.view', run_id=run.id) }}" class="btn btn-sm btn-primary">
-                                        <i class="bi bi-file-earmark-text"></i> Report
-                                    </a>
-                                    {% elif run.status in ['queued', 'running'] %}
-                                    <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#killModal{{ run.id }}">
-                                        <i class="bi bi-x-circle"></i> Stop
-                                    </button>
-                                    <!-- Kill Confirmation Modal -->
-                                    <div class="modal fade" id="killModal{{ run.id }}" tabindex="-1" aria-labelledby="killModalLabel{{ run.id }}" aria-hidden="true">
-                                        <div class="modal-dialog">
-                                            <div class="modal-content">
-                                                <div class="modal-header">
-                                                    <h5 class="modal-title" id="killModalLabel{{ run.id }}">Confirm Stop Task</h5>
-                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                                </div>
-                                                <div class="modal-body">
-                                                    Are you sure you want to stop this running scan (ID: {{ run.id }})?
-                                                    <br><br>
-                                                    <div class="alert alert-warning">
-                                                        <i class="bi bi-exclamation-triangle"></i> Warning: Stopping a running scan may result in incomplete data.
-                                                    </div>
-                                                </div>
-                                                <div class="modal-footer">
-                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                                    <form action="{{ url_for('tasks.kill_task', run_id=run.id) }}" method="POST">
-                                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                        <button type="submit" class="btn btn-danger">Stop Task</button>
-                                                    </form>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {% else %}
-                                    <button class="btn btn-sm btn-secondary" disabled>
-                                        <i class="bi bi-file-earmark-text"></i> No Report
-                                    </button>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                {% else %}
-                <div class="alert alert-info">
-                    <i class="bi bi-info-circle"></i> No scan runs for this task yet.
-                    <a href="{{ url_for('tasks.run', id=scan_task.id) }}">Run this task</a>.
-                </div>
-                {% endif %}
-            </div>
-        </div>
+    <div class="mt-4">
+        <a href="{{ url_for('tasks.index') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to All Tasks
+        </a>
     </div>
+
 </div>
 {% endblock %}
 
 {% block scripts %}
+{{ super() }}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Auto-refresh for running scans
-        const runningScans = document.querySelectorAll('tr[id^="scan-run-"].table-active');
-        
-        if (runningScans.length > 0) {
-            setInterval(function() {
-                runningScans.forEach(function(row) {
+        const csrfToken = "{{ csrf_token() }}";
+
+        // Auto-refresh for running/queued scans
+        function refreshScanStatus() {
+            const activeScanRows = document.querySelectorAll('tr[id^="scan-run-"].table-active');
+            if (activeScanRows.length > 0) {
+                activeScanRows.forEach(function(row) {
                     const runId = row.id.replace('scan-run-', '');
                     fetch(`{{ url_for('tasks.api_status', run_id=0) }}`.replace('0', runId))
                         .then(response => response.json())
                         .then(data => {
-                            // Update status
-                            const statusCell = row.querySelector('td:nth-child(2)');
-                            if (data.status === 'queued') {
-                                statusCell.innerHTML = '<span class="badge bg-secondary">Queued</span>';
-                            } else if (data.status === 'starting') {
-                                statusCell.innerHTML = '<span class="badge bg-info">Starting...</span>';
-                            } else if (data.status === 'running') {
-                                statusCell.innerHTML = `
-                                    <span class="badge bg-primary">Running (${data.progress}%)</span>
-                                    <div class="progress mt-1" style="height: 5px;">
-                                        <div class="progress-bar" role="progressbar" style="width: ${data.progress}%" 
-                                             aria-valuenow="${data.progress}" aria-valuemin="0" aria-valuemax="100"></div>
-                                    </div>
-                                `;
-                            } else if (data.status === 'completed') {
-                                statusCell.innerHTML = '<span class="badge bg-success">Completed</span>';
-                                row.classList.remove('table-active');
-                                
-                                // Update completed time
-                                const completedCell = row.querySelector('td:nth-child(4)');
-                                completedCell.textContent = new Date(data.completed_at).toLocaleString();
-                                
-                                // Update actions
-                                const actionsCell = row.querySelector('td:nth-child(5)');
-                                actionsCell.innerHTML = `
-                                    <a href="{{ url_for('reports.view', run_id=0) }}".replace('0', runId) class="btn btn-sm btn-primary">
-                                        <i class="bi bi-file-earmark-text"></i> Report
-                                    </a>
-                                `;
-                                
-                                // Reload page to get the latest data
-                                setTimeout(() => location.reload(), 2000);
-                            } else if (data.status === 'failed') {
-                                statusCell.innerHTML = '<span class="badge bg-danger">Failed</span>';
-                                row.classList.remove('table-active');
-                                
-                                // Update completed time
-                                const completedCell = row.querySelector('td:nth-child(4)');
-                                completedCell.textContent = new Date(data.completed_at).toLocaleString();
-                                
-                                // Reload page to get the latest data
-                                setTimeout(() => location.reload(), 2000);
+                            const statusCell = row.querySelector('td:nth-child(2) span.badge');
+                            const progressCell = row.querySelector('td:nth-child(3)');
+                            const completedCell = row.querySelector('td:nth-child(5)');
+                            const actionsCell = row.querySelector('td:nth-child(8)');
+
+                            if (statusCell) {
+                                statusCell.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+                                statusCell.className = 'badge ';
+                                if (data.status === 'completed') statusCell.classList.add('bg-success');
+                                else if (data.status === 'running') statusCell.classList.add('bg-primary');
+                                else if (data.status === 'queued') statusCell.classList.add('bg-info', 'text-dark');
+                                else if (data.status === 'failed') statusCell.classList.add('bg-danger');
+                                else if (data.status === 'stopped') statusCell.classList.add('bg-warning', 'text-dark');
+                                else statusCell.classList.add('bg-secondary');
                             }
-                        });
+
+                            if (progressCell) {
+                                if (data.status === 'running' && data.progress !== null) {
+                                    progressCell.innerHTML = `
+                                        <div class="progress" style="height: 20px; min-width: 80px;">
+                                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: ${data.progress}%;" 
+                                                 aria-valuenow="${data.progress}" aria-valuemin="0" aria-valuemax="100">${data.progress}%</div>
+                                        </div>`;
+                                } else if (data.status === 'completed') {
+                                    progressCell.textContent = '100%';
+                                } else {
+                                    progressCell.textContent = 'N/A';
+                                }
+                            }
+
+                            if (data.status === 'completed' || data.status === 'failed' || data.status === 'stopped') {
+                                row.classList.remove('table-active');
+                                if (completedCell && data.completed_at) {
+                                    completedCell.textContent = new Date(data.completed_at).toLocaleString([], {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'});
+                                }
+                                if (actionsCell) {
+                                    if(data.status === 'completed' && data.report_id){
+                                        actionsCell.innerHTML = `
+                                            <a href="{{ url_for('reports.view', run_id=0) }}".replace('0', data.id) class="btn btn-sm btn-outline-primary" title="View Report">
+                                                <i class="bi bi-file-earmark-text"></i>
+                                            </a>`;
+                                    } else {
+                                        actionsCell.innerHTML = ''; // Clear actions for failed/stopped or completed without report
+                                    }
+                                }
+                                // No automatic reload, user can refresh if needed.
+                            }
+                        })
+                        .catch(error => console.error('Error fetching scan status:', error));
                 });
-            }, 5000); // Check every 5 seconds
+            }
         }
+
+        // Initial call and set interval
+        if (document.querySelectorAll('tr[id^="scan-run-"].table-active').length > 0) {
+             refreshScanStatus(); // Initial call
+             setInterval(refreshScanStatus, 7000); // Refresh every 7 seconds
+        }
+
+        // Stop scan button handler
+        document.querySelectorAll('.stop-scan-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const runId = this.dataset.runId;
+                if (confirm('Are you sure you want to stop this scan run?')) {
+                    fetch(`{{ url_for('tasks.kill_task', run_id=0) }}`.replace('0', runId), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken
+                        },
+                        body: JSON.stringify({})
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // alert('Scan stop request sent.'); // Optional: give user feedback
+                            refreshScanStatus(); // Refresh status immediately
+                        } else {
+                            alert('Failed to stop scan: ' + (data.error || 'Unknown error'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error stopping scan:', error);
+                        alert('Error stopping scan. See console for details.');
+                    });
+                }
+            });
+        });
     });
 </script>
 {% endblock %}

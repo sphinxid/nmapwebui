@@ -121,7 +121,6 @@ def main():
             print(f"Scan Run ID: {scan.id} | Task ID: {scan.task_id}")
             print(f"Status: {get_status_color(scan.status)}{scan.status}{reset_color()}")
             print(f"Started At: {scan.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
-            print(f"Celery Task ID: {scan.celery_task_id or 'None'}")
             
             # Check how long the scan has been running
             run_time = now_utc - scan.started_at.replace(tzinfo=pytz.UTC)

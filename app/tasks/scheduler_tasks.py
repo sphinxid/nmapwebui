@@ -1,4 +1,4 @@
-from app import db, scheduler, celery
+from app import db, scheduler
 from app.models.task import ScanTask, ScanRun
 from app.models.user import User
 from app.tasks.nmap_tasks import run_nmap_scan
@@ -272,9 +272,7 @@ def check_missed_scheduled_runs():
                     logger.info(f"Created scan run {scan_run.id} for missed schedule of task {task.id}")
 
                     # Queue the task for processing
-                    # Pass the task.id as the second argument (scan_task_id_for_lock)
-                    run_nmap_scan.apply_async(args=[scan_run.id, task.id], countdown=0)
-                    logger.info(f"Queued Nmap scan for run {scan_run.id} (missed schedule)")
+                    # The task is already queued by create_scheduled_scan_run, the task processor will pick it up.
                 else:
                     logger.info(f"Task {task.id} ({task.name}) has already run after {should_have_run_after}, no action needed")
 
@@ -647,28 +645,3 @@ def create_scheduled_scan_run(task_id):
         if 'db' in locals() and db.session.is_active:
             db.session.rollback()
         return None
-
-
-def schedule_with_timezone(task_name, args, eta, user_timezone):
-    """
-    Schedule a task to run at a specific time in the user's timezone
-
-    Args:
-        task_name (str): The name of the task to schedule
-        args (list): Arguments for the task
-        eta (datetime): The time to run the task in the user's timezone
-        user_timezone (str): The user's timezone
-    """
-    # Make sure eta is timezone-aware
-    if eta.tzinfo is None:
-        local_tz = pytz.timezone(user_timezone)
-        eta = local_tz.localize(eta)
-
-    # Convert to UTC for Celery
-    eta_utc = convert_local_to_utc(eta, user_timezone)
-
-    # Get the task by name
-    task = celery.tasks[task_name]
-
-    # Schedule the task with the UTC time
-    return task.apply_async(args=args, eta=eta_utc)

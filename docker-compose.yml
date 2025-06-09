@@ -10,19 +10,6 @@ services:
       - .env # Loads environment variables from your .env file
     #volumes:
     #  - ./instance:/app/instance # Mounts your host's instance directory
-    depends_on:
-      - redis
     environment:
-      REDIS_HOST: nmapwebui-redis
-      REDIS_PORT: 6379
-
-  redis:
-    image: redis:latest # Use the official Redis Docker image
-    container_name: nmapwebui-redis
-    # ports:
-    #   - "6379:6379" # Optional: only expose if you need to access Redis directly from your host
-    volumes:
-      - redis_data:/data # Persist Redis data to a named volume
-
-volumes:
-  redis_data: # Define the named volume for Redis persistence
+      # REDIS_HOST and REDIS_PORT removed as Redis is no longer used
+      FLASK_ENV: development # Example: you might want to set other env vars here

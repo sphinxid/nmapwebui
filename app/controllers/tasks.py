@@ -1,6 +1,6 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, session
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, session, current_app
 from flask_login import login_required, current_user
-from app import db, celery
+from app import db
 from app.models.task import ScanTask, ScanRun
 from app.models.target import TargetGroup
 from app.models.settings import SystemSettings
@@ -8,6 +8,7 @@ from app.models.report import ScanReport, HostFinding, PortFinding
 from app.utils.forms import ScanTaskForm, ScheduleForm
 from app.tasks.nmap_tasks import run_nmap_scan
 from app.tasks.scheduler_tasks import schedule_task, unschedule_task
+from app.worker_manager import submit_nmap_scan
 from app.utils.timezone_utils import convert_utc_to_local, convert_local_to_utc, get_user_timezone, format_datetime, get_timezone_display_name
 from app.utils.sanitize import sanitize_form_data, sanitize_nmap_command
 from app.utils.validators import validate_nmap_args
@@ -73,6 +74,39 @@ def index(page=1):
                               'total_items': total_tasks
                           },
                           search=search)
+
+
+@tasks_bp.route('/<int:id>', methods=['GET'], endpoint='view')
+@login_required
+def view_task(id):
+    scan_task = ScanTask.query.filter_by(id=id, user_id=current_user.id).first_or_404()
+    # Get scan runs, ordered by most recent
+    scan_runs_query = ScanRun.query.filter_by(task_id=scan_task.id).order_by(ScanRun.created_at.desc())
+    
+    # Get pagination settings from system settings
+    per_page = SystemSettings.get_int('pagination_rows', 10)  # Use the general pagination setting # Use a specific setting for runs per page
+    page = request.args.get('page', 1, type=int)
+
+    paginated_runs = scan_runs_query.paginate(page=page, per_page=per_page, error_out=False)
+    
+    user_tz_name = get_user_timezone()
+
+    for run in paginated_runs.items:
+        run.created_at_local = convert_utc_to_local(run.created_at, user_tz_name) if run.created_at else None
+        run.started_at_local = convert_utc_to_local(run.started_at, user_tz_name) if run.started_at else None
+        run.completed_at_local = convert_utc_to_local(run.completed_at, user_tz_name) if run.completed_at else None
+        run.timezone_display = get_timezone_display_name(user_tz_name)
+
+    return render_template('tasks/view.html', 
+                           title=f"View Task: {scan_task.name}", 
+                           scan_task=scan_task, 
+                           scan_runs_pagination=paginated_runs, # Pass pagination object
+                           ScanRun=ScanRun, 
+                           format_datetime=format_datetime,
+                           get_user_timezone=get_user_timezone,
+                           convert_utc_to_local=convert_utc_to_local,
+                           get_timezone_display_name=get_timezone_display_name
+                           )
 
 
 @tasks_bp.route('/create', methods=['GET', 'POST'])
@@ -260,24 +294,59 @@ def run(id):
 
         # Start the Nmap scan immediately only if under the limit
         if should_start_immediately:
-            from celery_config import celery
             # Pass the scan_task.id as the second argument (scan_task_id_for_lock)
-            celery.send_task('app.tasks.nmap_tasks.run_nmap_scan', args=[scan_run.id, scan_task.id])
-            flash('Scan started successfully!', 'success')
+            submission_successful = submit_nmap_scan(scan_run_id=scan_run.id, scan_task_id_for_lock=scan_task.id)
+            if submission_successful:
+                # No Celery task ID to store anymore
+                db.session.commit()
+                flash(f'Scan task "{scan_task.name}" submitted successfully.', 'success')
+                return redirect(url_for('tasks.view', id=scan_task.id))
+            else:
+                # Submission to pool failed, new_run already has 'queued' status
+                # Update to 'failed' and log error
+                scan_run.status = 'failed'
+                scan_run.error_message = "Failed to submit task to worker pool."
+                db.session.commit() # Commit status update
+                flash(f'Failed to submit scan task "{scan_task.name}" to the worker pool.', 'danger')
+                current_app.logger.error(f"Worker pool task submission failed for ScanTask {scan_task.id} (ScanRun {scan_run.id})")
+                return redirect(url_for('tasks.view', id=scan_task.id))
+
         else:
             flash(f'Scan queued successfully. It will start automatically when resources are available. Current limit: {max_concurrent_tasks} concurrent tasks.', 'info')
-    except sqlalchemy.exc.SQLAlchemyError as e:
-        db.session.rollback()
-        flash(f'Error starting scan: {str(e)}', 'danger')
+            return redirect(url_for('tasks.view', id=scan_task.id))
+    except Exception as e:
+        db.session.rollback() # Rollback the new_run creation if submission itself raised an unexpected error
+        # Attempt to create a failed ScanRun record if it wasn't fully committed before the error
+        # This part might be redundant if new_run was already added and session.add(new_run) was called before this block
+        # For safety, ensure a failed record exists or is updated.
+        existing_run = ScanRun.query.get(scan_run.id)
+        if existing_run:
+            existing_run.status = 'failed'
+            existing_run.error_message = f"Error during task submission: {str(e)}"
+            existing_run.completed_at = datetime.utcnow()
+        else:
+            # This case should ideally not happen if new_run was added to session before
+            # but as a fallback:
+            failed_run = ScanRun(
+                task_id=scan_task.id,
+                status='failed',
+                error_message=f"Error during task submission: {str(e)}",
+                started_at=datetime.utcnow(),
+                completed_at=datetime.utcnow()
+            )
+            db.session.add(failed_run)
+        db.session.commit() # Commit the error state for the run
+        flash(f'An unexpected error occurred while trying to submit task "{scan_task.name}". Please check logs.', 'danger')
+        current_app.logger.error(f"Exception during task submission for ScanTask {scan_task.id}: {str(e)}", exc_info=True)
+        return redirect(url_for('tasks.view', id=scan_task.id))
 
+    # The following lines for rendering the template are now removed as all paths should redirect.
+    # If execution reaches here, it's an unexpected state. Log and redirect as a fallback.
+    current_app.logger.error(f"Reached end of 'run' task logic unexpectedly for task {scan_task.id}. This should not happen.")
     return redirect(url_for('tasks.view', id=scan_task.id))
 
-@tasks_bp.route('/<int:id>/view')
-@login_required
-def view(id):
-    scan_task = ScanTask.query.filter_by(id=id, user_id=current_user.id).first_or_404()
-
-    # Get the maximum number of reports/history items to keep for this task
+    # --- REMOVED CODE STARTS HERE ---
+    # # Get the maximum number of reports/history items to keep for this task
     max_history = scan_task.get_max_reports()
 
     # Get scan runs for this task and order by ID in descending order
@@ -429,13 +498,6 @@ def kill_task(run_id):
     if scan_run.status not in ['queued', 'running']:
         flash('This task is not running.', 'warning')
         return redirect(url_for('tasks.view', id=scan_run.task_id))
-
-    # If the task has a Celery task ID, revoke it
-    if scan_run.celery_task_id:
-        try:
-            celery.control.revoke(scan_run.celery_task_id, terminate=True, signal='SIGKILL')
-        except Exception as e:
-            print(f"Error revoking Celery task: {str(e)}")
 
     # If the task has an Nmap PID, kill the process
     if scan_run.nmap_pid:
