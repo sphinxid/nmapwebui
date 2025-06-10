@@ -9,11 +9,42 @@ import json
 import pytz
 import logging
 import calendar
+import psutil
 from sqlalchemy.exc import OperationalError
 from app.utils.timezone_utils import convert_local_to_utc, get_user_timezone
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+def _is_scan_process_running(pid, scan_engine='nmap'):
+    """Check if a process with the given PID is running and is a scan process (nmap)"""
+    if pid is None:
+        return False
+    try:
+        process = psutil.Process(pid)
+        process_cmdline = ' '.join(process.cmdline()).lower()
+        process_name = process.name().lower()
+        return 'nmap' in process_name or 'nmap' in process_cmdline
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        return False
+
+def _extract_scan_pids(scan_engine='nmap'):
+    """Find running scan processes (nmap, masscan, or both) and return their PIDs"""
+    try:
+        scan_processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                proc_name = proc.name().lower()
+                proc_cmdline = ' '.join(proc.cmdline()).lower() if proc.cmdline() else ''
+                if (scan_engine == 'nmap') and \
+                   ('nmap' in proc_name or 'nmap' in proc_cmdline):
+                    scan_processes.append({'pid': proc.pid, 'engine': 'nmap'})
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        return scan_processes
+    except Exception as e:
+        logger.error(f"Error checking for scan processes: {str(e)}")
+        return []
 
 def make_timezone_aware(dt):
     """
@@ -258,12 +289,98 @@ def check_missed_scheduled_runs():
             logger.error(f"Unexpected error in check_missed_scheduled_runs: {str(e)}", exc_info=True)
             return False # Maintain previous behavior, though consider if scheduler should handle this
 
+def cleanup_zombie_scan_runs():
+    """Checks for 'running' or 'starting' scan tasks whose nmap/masscan processes are no longer active and marks them as 'failed'."""
+    if _current_flask_app is None:
+        logger.error("CRITICAL: Flask app instance (_current_flask_app) is None in cleanup_zombie_scan_runs.")
+        return
+
+    with _current_flask_app.app_context():
+        logger.info("Starting NmapWebUI Zombie Task Cleanup job...")
+        now_utc = datetime.now(pytz.UTC)
+        zombie_count = 0
+
+        # Get all running and starting scan runs
+        # Added a filter for tasks started more than a minute ago to give them time to register a PID
+        # or for very short scans to complete.
+        time_threshold_for_pid_check = now_utc - timedelta(minutes=1)
+        scans_to_check = ScanRun.query.filter(
+            ScanRun.status.in_(['starting', 'running']),
+            ScanRun.started_at < time_threshold_for_pid_check
+        ).all()
+
+        if not scans_to_check:
+            logger.info("No running/starting scan tasks found that meet zombie check criteria.")
+            return
+
+        logger.info(f"Found {len(scans_to_check)} running/starting scan task(s) to check for zombie status.")
+
+        for scan in scans_to_check:
+            logger.info(f"Checking ScanRun ID: {scan.id}, Status: {scan.status}, Started: {scan.started_at}, Nmap PID: {scan.nmap_pid}")
+            
+            run_time = now_utc - scan.started_at.replace(tzinfo=pytz.UTC) # Ensure started_at is offset-aware for comparison
+            
+            scan_engine = 'nmap' # Default
+            try:
+                if scan.task and hasattr(scan.task, 'scan_engine') and scan.task.scan_engine:
+                    scan_engine = scan.task.scan_engine
+                logger.debug(f"ScanRun {scan.id} using engine: {scan_engine}")
+            except Exception as e:
+                logger.warning(f"Could not determine scan engine for ScanRun {scan.id}: {e}")
+
+            is_zombie = False
+            if scan.nmap_pid is not None:
+                if not _is_scan_process_running(scan.nmap_pid, scan_engine):
+                    logger.warning(f"ZOMBIE DETECTED: ScanRun {scan.id} (Engine: {scan_engine}, PID: {scan.nmap_pid}) process is not running.")
+                    is_zombie = True
+                else:
+                    logger.info(f"ScanRun {scan.id} (Engine: {scan_engine}, PID: {scan.nmap_pid}) process is still running.")
+            else: # No PID stored
+                # Grace period for tasks that might not have registered a PID yet or are very short-lived
+                # This is now partially handled by the time_threshold_for_pid_check in the initial query
+                # but we can add a specific grace for PID-less runs if status is 'running'
+                grace_period_no_pid = timedelta(minutes=2) # If it's 'running' for 2 mins without PID, it's suspicious
+                if scan.status == 'running' and run_time > grace_period_no_pid:
+                    logger.warning(f"ZOMBIE DETECTED: ScanRun {scan.id} is 'running' for {run_time} without a stored PID (threshold: {grace_period_no_pid}).")
+                    is_zombie = True
+                elif scan.status == 'starting': # If 'starting' for too long, also suspicious
+                    if run_time > grace_period_no_pid: # Using same grace for 'starting'
+                         logger.warning(f"ZOMBIE DETECTED: ScanRun {scan.id} is 'starting' for {run_time} without a stored PID (threshold: {grace_period_no_pid}).")
+                         is_zombie = True
+                    else:
+                        logger.info(f"ScanRun {scan.id} is 'starting' without PID but within grace period ({run_time} < {grace_period_no_pid}). Monitoring.")
+                else: # 'running' but within grace_period_no_pid
+                    logger.info(f"ScanRun {scan.id} is 'running' without PID but within grace period ({run_time} < {grace_period_no_pid}). Monitoring.")
+
+            if is_zombie:
+                zombie_count += 1
+                scan.status = 'failed'
+                scan.error_message = f"Zombie task detected: {scan_engine} process (PID: {scan.nmap_pid if scan.nmap_pid else 'N/A'}) not found or task stuck in starting/running without PID."
+                scan.completed_at = datetime.now(pytz.UTC)
+                try:
+                    db.session.commit()
+                    logger.info(f"Marked ScanRun {scan.id} as FAILED (zombie task). Attempting to release lock.")
+                    
+                    lock_key_to_delete = f"lock:run_nmap_scan:task_id_{scan.task_id}"
+                    task_lock_entry = db.session.get(TaskLock, lock_key_to_delete)
+                    if task_lock_entry:
+                        db.session.delete(task_lock_entry)
+                        db.session.commit()
+                        logger.info(f"Successfully deleted task lock: {lock_key_to_delete} for zombie ScanRun {scan.id}.")
+                    else:
+                        logger.info(f"No task lock found with key: {lock_key_to_delete} for zombie ScanRun {scan.id}.")
+                except Exception as e_commit_lock:
+                    logger.error(f"Error committing zombie status or deleting lock for ScanRun {scan.id}: {e_commit_lock}")
+                    if db.session.is_active:
+                        db.session.rollback()
+            else:
+                logger.info(f"ScanRun {scan.id} appears to be running normally or is not yet considered a zombie.")
+        
+        logger.info(f"Zombie Task Cleanup job finished. Found and processed {zombie_count} zombie task(s).")
+
 def initialize_scheduled_tasks():
+    """Initializes all scheduled tasks from the database and the periodic missed run checker."""
     from app import scheduler
-    """
-    Initialize all scheduled tasks from the database at application startup.
-    Also, schedule a periodic check for missed runs.
-    """
     logger.info("Initializing scheduled tasks...")
     try:
         # Get all tasks that are marked as scheduled
@@ -286,6 +403,10 @@ def initialize_scheduled_tasks():
             misfire_grace_time=300 # Allow 5 minutes for misfires
         )
         logger.info("Scheduled periodic check for missed runs (every 10 seconds).")
+
+        # Add the periodic zombie task cleanup job
+        scheduler.add_job(func=cleanup_zombie_scan_runs, trigger='interval', minutes=1, id='periodic_zombie_cleanup', replace_existing=True)
+        logger.info("Scheduled periodic_zombie_cleanup to run every 1 minute.")
 
         logger.info("Scheduled tasks initialization complete.")
     except Exception as e:
@@ -548,57 +669,61 @@ def create_scheduled_scan_run(task_id):
     Args:
         task_id: The ID of the task to run
     """
-    try:
-        logger.info(f"Creating scheduled scan run for task {task_id}")
+    if _current_flask_app is None:
+        logger.error(f"CRITICAL: Flask app instance (_current_flask_app) is None. Cannot create app context for create_scheduled_scan_run (task_id: {task_id}).")
+        return None # Or raise an exception
 
-        # First, get the task without locking
-        task = ScanTask.query.get(task_id)
-        if not task:
-            logger.error(f"Task {task_id} not found")
-            return None
-
-        # Check if task is still scheduled
-        if not task.is_scheduled:
-            logger.warning(f"Task {task_id} is no longer scheduled, skipping run")
-            return None
-
-        # Check if there's already a queued or running scan for this task
-        existing_scan = ScanRun.query.filter(
-            ScanRun.task_id == task.id,
-            ScanRun.status.in_(['queued', 'running'])
-        ).first()
-
-        if existing_scan:
-            logger.warning(f"Task {task_id} already has a {existing_scan.status} scan (ID: {existing_scan.id}), not creating a new one for missed schedule.")
-            return None
-
-        # Create a new scan run
-        scan_run = ScanRun(
-            task_id=task.id,
-            status='queued',
-            created_at=datetime.now(pytz.UTC),
-            # started_at will be set when the task processor picks it up
-        )
+    with _current_flask_app.app_context():
         try:
-            db.session.add(scan_run)
-            db.session.commit()
-            scan_run_id = scan_run.id # Get the ID after commit
-            logger.info(f"Created scan run {scan_run.id} for scheduled task {task.id}")
-            logger.info(f"Scan run {scan_run_id} created and queued. It will be processed by the task processor.")
-            return scan_run_id
-        except OperationalError as oe:
-                if 'UNIQUE constraint failed' in str(oe):
-                    logger.warning(f"Task {task_id} already has a queued or running scan, skipping")
-                    db.session.rollback()
-                    return None
-                else:
-                    logger.warning(f"Database error while processing task {task_id}: {str(oe)}")
-                    db.session.rollback()
-                    return None
+            logger.info(f"Creating scheduled scan run for task {task_id}")
 
-        return scan_run_id
-    except Exception as e:
-        logger.error(f"Error creating scheduled scan run for task {task_id}: {str(e)}")
-        if 'db' in locals() and db.session.is_active:
-            db.session.rollback()
-        return None
+            # First, get the task without locking
+            task = ScanTask.query.get(task_id)
+            if not task:
+                logger.error(f"Task {task_id} not found")
+                return None
+
+            # Check if task is still scheduled
+            if not task.is_scheduled:
+                logger.warning(f"Task {task_id} is no longer scheduled, skipping run")
+                return None
+
+            # Check if there's already a queued or running scan for this task
+            existing_scan = ScanRun.query.filter(
+                ScanRun.task_id == task.id,
+                ScanRun.status.in_(['queued', 'running'])
+            ).first()
+
+            if existing_scan:
+                logger.warning(f"Task {task_id} already has a {existing_scan.status} scan (ID: {existing_scan.id}), not creating a new one for missed schedule.")
+                return None
+
+            # Create a new scan run
+            scan_run = ScanRun(
+                task_id=task.id,
+                status='queued',
+                created_at=datetime.now(pytz.UTC),
+                # started_at will be set when the task processor picks it up
+            )
+            try:
+                db.session.add(scan_run)
+                db.session.commit()
+                scan_run_id = scan_run.id # Get the ID after commit
+                logger.info(f"Created scan run {scan_run.id} for scheduled task {task.id}")
+                logger.info(f"Scan run {scan_run_id} created and queued. It will be processed by the task processor.")
+                return scan_run_id
+            except OperationalError as oe:
+                    if 'UNIQUE constraint failed' in str(oe):
+                        logger.warning(f"Task {task_id} already has a queued or running scan, skipping")
+                        db.session.rollback()
+                        return None
+                    else:
+                        logger.warning(f"Database error while processing task {task_id}: {str(oe)}")
+                        db.session.rollback()
+                        return None
+
+        except Exception as e:
+            logger.error(f"Error creating scheduled scan run for task {task_id}: {str(e)}")
+            if 'db' in locals() and db.session.is_active:
+                db.session.rollback()
+            return None

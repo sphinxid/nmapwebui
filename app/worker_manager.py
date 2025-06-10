@@ -1,8 +1,14 @@
 import multiprocessing
 import logging
 import atexit
+from functools import partial
+from datetime import datetime
+import pytz # For timezone-aware ended_at, if used
+
 from app.tasks.nmap_tasks import run_nmap_scan
 from config import Config
+from app import _current_flask_app, db # Assuming _current_flask_app is accessible from app package
+from app.models.task import ScanRun
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +51,91 @@ def shutdown_worker_pool():
 # managing the pool lifecycle via server hooks might be more appropriate.
 atexit.register(shutdown_worker_pool)
 
+
+def scan_success_callback(scan_run_id, result_from_run_nmap_scan):
+    logger.info(f"Scan success callback triggered for scan_run_id: {scan_run_id}, result: {result_from_run_nmap_scan}")
+    
+    if not _current_flask_app:
+        logger.error(f"CRITICAL: Cannot update ScanRun {scan_run_id}: _current_flask_app is None in scan_success_callback.")
+        return
+
+    with _current_flask_app.app_context():
+        try:
+            scan_run = db.session.get(ScanRun, scan_run_id)
+            if not scan_run:
+                logger.error(f"ScanRun {scan_run_id} not found in scan_success_callback.")
+                return
+
+            if result_from_run_nmap_scan is None:  # Lock acquisition failure (decorator returned None)
+                if scan_run.status in ['queued', 'starting', 'running']:
+                    scan_run.status = 'failed'
+                    scan_run.error_message = "Task skipped: Could not acquire execution lock (already running or recently completed)."
+                    scan_run.ended_at = datetime.now(pytz.UTC) # Or use timezone.utc if Python 3.9+
+                    db.session.commit()
+                    logger.info(f"Updated ScanRun {scan_run_id} to '{scan_run.status}' due to lock acquisition failure.")
+                else:
+                    logger.info(f"ScanRun {scan_run_id} already in terminal state '{scan_run.status}'. No update from lock failure callback.")
+            
+            elif isinstance(result_from_run_nmap_scan, dict):
+                task_status = result_from_run_nmap_scan.get('status')
+                task_message = result_from_run_nmap_scan.get('message')
+
+                if task_status == 'completed':
+                    # run_nmap_scan should have already set this. Log for confirmation.
+                    logger.info(f"ScanRun {scan_run_id} reported as 'completed' by the task function. Current DB status: {scan_run.status}.")
+                    if scan_run.status != 'completed':
+                        logger.warning(f"ScanRun {scan_run_id} DB status is '{scan_run.status}', but task returned 'completed'. Re-aligning.")
+                        scan_run.status = 'completed'
+                        if scan_run.ended_at is None: # Set ended_at if not already set
+                             scan_run.ended_at = datetime.now(pytz.UTC)
+                        # scan_run.error_message = None # Clear error if it was completed
+                        db.session.commit()
+
+                elif task_status == 'failed':
+                    logger.warning(f"ScanRun {scan_run_id} reported as 'failed' by the task function. DB status: {scan_run.status}. Message: {task_message}")
+                    if scan_run.status not in ['failed', 'completed']: # Avoid overwriting a 'completed' status if some race occurred
+                        scan_run.status = 'failed'
+                        if task_message:
+                            scan_run.error_message = str(task_message)[:500] # Ensure it fits, use model's length
+                        if scan_run.ended_at is None:
+                            scan_run.ended_at = datetime.now(pytz.UTC)
+                        db.session.commit()
+                        logger.info(f"Updated ScanRun {scan_run_id} to 'failed' based on task function's 'failed' return. Message: {task_message}")
+                    else:
+                        logger.info(f"ScanRun {scan_run_id} already in terminal state '{scan_run.status}' or task reported failure for already completed task. No update from task's 'failed' return.")
+                else:
+                    logger.warning(f"ScanRun {scan_run_id} received an unexpected status '{task_status}' in result dictionary: {result_from_run_nmap_scan}")
+            
+            else:
+                logger.error(f"ScanRun {scan_run_id} received an unexpected result type in scan_success_callback: {type(result_from_run_nmap_scan)}. Result: {result_from_run_nmap_scan}")
+
+        except Exception as e:
+            logger.error(f"Error in scan_success_callback for ScanRun {scan_run_id}: {e}", exc_info=True)
+            if db.session.is_active:
+                db.session.rollback()
+
+def scan_error_callback(scan_run_id, exception):
+    logger.error(f"Scan error callback triggered for scan_run_id: {scan_run_id} due to: {exception}", exc_info=True)
+    if not _current_flask_app:
+        logger.error(f"CRITICAL: Cannot update ScanRun {scan_run_id}: _current_flask_app is None in scan_error_callback.")
+        return
+
+    with _current_flask_app.app_context():
+        try:
+            scan_run = db.session.get(ScanRun, scan_run_id) # Use db.session.get
+            if scan_run:
+                scan_run.status = 'failed'
+                scan_run.error_message = f"Worker process error: {str(exception)[:450]}" # Truncate error to fit field
+                scan_run.ended_at = datetime.now(pytz.UTC)
+                db.session.commit()
+                logger.info(f"Updated ScanRun {scan_run_id} to 'failed' due to worker exception.")
+            else:
+                logger.error(f"ScanRun {scan_run_id} not found in scan_error_callback.")
+        except Exception as e:
+            logger.error(f"Error in scan_error_callback handling for ScanRun {scan_run_id}: {e}")
+            if db.session.is_active:
+                db.session.rollback()
+
 def submit_nmap_scan(scan_run_id, scan_task_id_for_lock):
     """Submits an Nmap scan task to the worker pool."""
     # WORKER_POOL is expected to be initialized by create_app in app/__init__.py
@@ -58,9 +149,17 @@ def submit_nmap_scan(scan_run_id, scan_task_id_for_lock):
     if WORKER_POOL:
         try:
             logger.info("Submitting nmap scan for scan_run_id: %s (task_id_for_lock: %s) to worker pool.", scan_run_id, scan_task_id_for_lock)
-            # apply_async is non-blocking and returns an AsyncResult object (not used here yet)
-            WORKER_POOL.apply_async(run_nmap_scan, args=(scan_run_id, scan_task_id_for_lock))
-            logger.info("Nmap scan for scan_run_id: %s submitted successfully.", scan_run_id)
+            # apply_async is non-blocking. Use callbacks to handle results/errors.
+            success_cb = partial(scan_success_callback, scan_run_id)
+            error_cb = partial(scan_error_callback, scan_run_id)
+
+            WORKER_POOL.apply_async(
+                run_nmap_scan, 
+                args=(scan_run_id, scan_task_id_for_lock),
+                callback=success_cb,
+                error_callback=error_cb
+            )
+            logger.info("Nmap scan for scan_run_id: %s submitted successfully with callbacks.", scan_run_id)
             return True
         except Exception as e:
             # This catch is for errors during submission to the pool itself.

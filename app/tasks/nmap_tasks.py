@@ -63,7 +63,7 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                 current_app.logger.error(f"[ScanRun {scan_run_id}] {message} for scan_run_id: {scan_run_id}")
                 scan_run.error_message = message
                 db.session.commit()
-                return
+                return {'status': 'failed', 'message': message, 'scan_run_id': scan_run_id}
         
         # Create a unique identifier for this scan
         timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
@@ -155,7 +155,7 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                 scan_run.status = 'failed'
                 scan_run.completed_at = datetime.utcnow()
                 db.session.commit()
-            return {'status': 'failed', 'message': 'No valid targets found'}
+            return {'status': 'failed', 'message': 'No valid targets found', 'scan_run_id': scan_run_id}
         
         # Join the sanitized targets back into a string
         sanitized_target_string = ' '.join(sanitized_targets)
@@ -222,7 +222,7 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                     db.session.commit()
                 else:
                     current_app.logger.error(f"[ScanRun {scan_run_id}] Scan run not found when trying to log Nmap process start error.")
-            return {'status': 'failed', 'message': f'Error starting Nmap process: {str(e)}'}
+            return {'status': 'failed', 'message': f'Error starting Nmap process: {str(e)}', 'scan_run_id': scan_run_id}
         
         # Variables to track process state and errors
         privilege_error_detected = False
@@ -318,7 +318,7 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                         scan_run.status = 'failed'
                         scan_run.completed_at = datetime.utcnow()
                         db.session.commit()
-                    return {'status': 'failed', 'message': f'Error restarting with sudo: {str(e)}'}
+                    return {'status': 'failed', 'message': f'Error restarting with sudo: {str(e)}', 'scan_run_id': scan_run_id}
             
             # Check for progress updates
             if 'About' in line and '% done' in line:
@@ -359,7 +359,7 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                     scan_run.error_message = 'No output received from Nmap process'
                     scan_run.completed_at = datetime.utcnow()
                     db.session.commit()
-            return # Task failed
+            return {'status': 'failed', 'message': 'No output received from Nmap process', 'scan_run_id': scan_run_id}
 
         # Determine if Nmap considers itself done by checking the entire output buffer
         nmap_truly_done_in_output = any("Nmap done" in l for l in output_buffer)
@@ -389,14 +389,19 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                             scan_run.status = 'completed'
                             scan_run.report = new_report # Link the report object
                             scan_run.error_message = None # Clear any previous error
+                            scan_run.completed_at = datetime.utcnow()
+                            db.session.commit()
+                            return {'status': 'completed', 'scan_run_id': scan_run_id, 'report_id': new_report.id}
                         else:
                             current_app.logger.error(f"[ScanRun {scan_run_id}] Failed to create report from Nmap output.")
                             scan_run.status = 'failed'
                             scan_run.error_message = "Report creation failed after Nmap scan."
-                        scan_run.completed_at = datetime.utcnow()
-                        db.session.commit()
+                            scan_run.completed_at = datetime.utcnow()
+                            db.session.commit()
+                            return {'status': 'failed', 'message': "Report creation failed after Nmap scan.", 'scan_run_id': scan_run_id}
                     else:
                         current_app.logger.error(f"[ScanRun {scan_run_id}] ScanRun object not found when trying to finalize after report creation attempt.")
+                        return {'status': 'failed', 'message': "ScanRun object not found when trying to finalize after report creation attempt.", 'scan_run_id': scan_run_id}
 
         elif return_code != 0:
             current_app.logger.error(f"[ScanRun {scan_run_id}] Nmap process exited with non-zero return code: {return_code}.")
@@ -439,7 +444,7 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                     db.session.commit()
                 else:
                     current_app.logger.error(f"[ScanRun {scan_run_id}] ScanRun object not found when handling incomplete Nmap scan (code 0, no 'Nmap done').")
-            
+            return {'status': 'failed', 'message': "Nmap finished (code 0) but output indicates incompletion or error (no 'Nmap done' marker).", 'scan_run_id': scan_run_id}
     except Exception as e:
         current_app.logger.error(f"[ScanRun {scan_run_id}] Unhandled exception in run_nmap_scan: {str(e)}", exc_info=True)
         with current_app.app_context():

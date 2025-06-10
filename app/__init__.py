@@ -7,6 +7,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 import os
 import pytz
+import atexit
 from datetime import datetime
 from config import Config
 
@@ -46,6 +47,10 @@ def create_app(config_class=Config, instance_path=None):
     
         # Initialize APScheduler
         scheduler.start()
+
+        # Register scheduler shutdown
+        # wait=False ensures atexit doesn't block indefinitely if jobs are stuck
+        atexit.register(lambda: scheduler.shutdown(wait=False))
 
         # Initialize the worker pool (if not testing)
         if not app.testing:
