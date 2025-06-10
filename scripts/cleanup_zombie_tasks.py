@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app import create_app, db
-from app.models.task import ScanRun
+from app.models.task import ScanRun, TaskLock # Import TaskLock
 import pytz
 
 def get_status_color(status):
@@ -141,49 +141,53 @@ def main():
             
             # Check if this is a zombie task
             is_zombie = False
-            
-            # Check if the stored scan PID is still running
+            final_status_message = f"Scan run {scan.id} appears to be running normally or is not in a state to be checked for zombie Nmap process."
+
             if scan.nmap_pid is not None:
                 print(f"Stored scan PID: {scan.nmap_pid}")
                 if not is_scan_process_running(scan.nmap_pid, scan_engine):
                     print(f"ZOMBIE DETECTED: Stored {scan_engine} PID {scan.nmap_pid} is no longer running")
                     is_zombie = True
                 else:
-                    print(f"{scan_engine.capitalize()} process with PID {scan.nmap_pid} is still running")
-            else:
+                    # PID stored and process is running
+                    final_status_message = f"{scan_engine.capitalize()} process with PID {scan.nmap_pid} is still running for ScanRun {scan.id}."
+            else: # No PID stored for this scan
                 print(f"No {scan_engine} PID stored for this scan (ScanRun ID: {scan.id}).")
-                
+                grace_period_no_pid = timedelta(minutes=2) # Shorter grace period for PID-less runs
                 if scan.status in ['starting', 'running']:
-                    # Primary check: running for >5 mins without a PID
-                    if run_time > timedelta(minutes=5):
-                        print(f"ZOMBIE DETECTED: Scan (ID: {scan.id}) is 'running' for {run_time} without a PID (threshold: 5 minutes).")
+                    if run_time > grace_period_no_pid:
+                        print(f"ZOMBIE DETECTED: Scan (ID: {scan.id}) is '{scan.status}' for {run_time} without a PID (threshold: {grace_period_no_pid}).")
                         is_zombie = True
-                    # Secondary check: running for >12 hours without a PID (if not caught by 5-min rule)
-                    #elif run_time > timedelta(hours=12): 
-                    #    print(f"ZOMBIE DETECTED: Scan (ID: {scan.id}) is 'running' for {run_time} without a PID (threshold: 12 hours).")
-                    #    is_zombie = True
-                    # Tertiary check: running, no PID, and no relevant scan processes on the entire system
                     else:
-                        # This assumes nmap_processes and masscan_processes are lists of PIDs fetched earlier in the script
-                        # representing all running Nmap/Masscan PIDs on the system.
-                        relevant_system_processes = nmap_processes if scan_engine == 'nmap' else masscan_processes
-                        if not relevant_system_processes:
-                            print(f"ZOMBIE DETECTED: Scan (ID: {scan.id}) is 'running' with no PID, and no {scan_engine} processes found on system.")
-                            is_zombie = True
-                # If scan.status is 'queued' and no PID, it's not treated as a zombie Nmap process here.
-                # Such cases might be handled by cleanup_stuck_tasks.py or indicate an issue
-                # with the task processor not starting the scan and storing a PID.
-            
+                        # Status is 'starting' or 'running', no PID, but within grace period
+                        final_status_message = f"Scan run {scan.id} is '{scan.status}' without a PID but within grace period ({run_time} < {grace_period_no_pid}). Monitoring."
+                # If status is 'queued' or other, it's not a zombie Nmap process yet.
+
             # Mark as failed if it's a zombie
             if is_zombie:
                 zombie_count += 1
                 print(f"Marking scan run {scan.id} as FAILED (zombie task)")
                 scan.status = 'failed'
                 scan.completed_at = datetime.utcnow()
+                # Commit the status change for the scan run first
                 db.session.commit()
                 print(f"Scan run {scan.id} has been marked as failed.")
+
+                # Now, attempt to remove the associated task lock
+                lock_key_to_delete = f"lock:run_nmap_scan:task_id_{scan.task_id}"
+                try:
+                    task_lock_entry = TaskLock.query.get(lock_key_to_delete)
+                    if task_lock_entry:
+                        db.session.delete(task_lock_entry)
+                        db.session.commit()
+                        print(f"Successfully deleted task lock: {lock_key_to_delete}")
+                    else:
+                        print(f"No task lock found with key: {lock_key_to_delete} (already released or never existed for this zombie)")
+                except Exception as e_lock_delete:
+                    db.session.rollback()
+                    print(f"Error deleting task lock {lock_key_to_delete}: {str(e_lock_delete)}")
             else:
-                print(f"Scan run {scan.id} appears to be running normally.")
+                print(final_status_message)
         
         print("\n" + "=" * 80)
         print(f"Cleanup complete. Found and fixed {zombie_count} zombie task(s).")

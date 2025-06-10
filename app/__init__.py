@@ -16,8 +16,10 @@ migrate = Migrate()
 login_manager = LoginManager()
 csrf = CSRFProtect()
 scheduler = BackgroundScheduler(timezone=pytz.UTC)
+_current_flask_app = None
 
 def create_app(config_class=Config, instance_path=None):
+    global _current_flask_app
     app = Flask(__name__, instance_path=instance_path) if instance_path else Flask(__name__)
     app.config.from_object(config_class)
     
@@ -26,6 +28,9 @@ def create_app(config_class=Config, instance_path=None):
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
+
+    # Assign the app instance to the global variable before scheduler setup
+    _current_flask_app = app
     
     # Configure login
     login_manager.login_view = 'auth.login'
@@ -59,6 +64,17 @@ def create_app(config_class=Config, instance_path=None):
                 )
             else:
                 pass
+
+            # Initialize scheduled tasks from the database, only when scheduler is first started
+            # Import here to avoid circular imports
+            from app.tasks.scheduler_tasks import initialize_scheduled_tasks
+            app.logger.info("Attempting to initialize scheduled tasks...")
+            try:
+                with app.app_context(): # Ensure app context for DB operations within initialize_scheduled_tasks
+                    initialize_scheduled_tasks()
+                app.logger.info("Scheduled tasks initialization attempt complete.")
+            except Exception as e:
+                app.logger.error(f"CRITICAL: Failed to initialize scheduled tasks during app startup: {str(e)}", exc_info=True)
         
     # Register blueprints
     from app.controllers.auth import auth_bp
@@ -128,22 +144,6 @@ def create_app(config_class=Config, instance_path=None):
                 'user_timezone': 'UTC',
                 'timezone_display': 'UTC'
             }
-    
-    # Initialize scheduled tasks from the database
-    # Import here to avoid circular imports
-    from app.tasks.scheduler_tasks import initialize_scheduled_tasks
-    
-    # Create a function to initialize scheduled tasks
-    def init_scheduled_tasks():
-        initialize_scheduled_tasks()
-    
-    # Register a function to run after the application context is set up
-    with app.app_context():
-        # Try to initialize scheduled tasks, but don't fail if the database isn't ready
-        try:
-            init_scheduled_tasks()
-        except Exception as e:
-            pass
     
     # Ensure instance folders exist
     os.makedirs(app.config['NMAP_REPORTS_DIR'], exist_ok=True)
