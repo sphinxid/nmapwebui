@@ -8,7 +8,7 @@ A web-based application that serves as a user-friendly wrapper for the Nmap netw
 - **User Management** - admin interface for managing user accounts
 - **Target Group Management** - organize and manage scan targets efficiently
 - **Scan Task Creation & Configuration** - flexible scan configuration with custom Nmap options
-- **Asynchronous Background Scanning** - non-blocking scan execution using Celery
+- **Asynchronous Background Scanning** - non-blocking scan execution using a built-in scheduler
 - **Task Listing & Management** - monitor and control running and queued scans
 - **Scan Report Display** - comprehensive visualization of scan results
 - **Multiple Scan Runs & Report History** - track scan history and compare results over time
@@ -18,9 +18,8 @@ A web-based application that serves as a user-friendly wrapper for the Nmap netw
 
 - Python 3.8 or higher
 - Nmap installed on the system
-- Redis server (for Celery task queue)
 - (Optional) Gunicorn or uWSGI for production deployment
-- (Optional) The User running the Flask & Celery worker should have sudo access without a password for Nmap commands requiring root privileges
+- (Optional) The User running the application should have sudo access without a password for Nmap commands requiring root privileges
 
 ## Manual Installation & Setup
 
@@ -65,9 +64,8 @@ SECRET_KEY=your-secret-key
 # Database configuration (use absolute path)
 DATABASE_URL=sqlite:////home/user/nmapwebui/instance/app.db
 
-# Celery configuration
-CELERY_BROKER_URL=redis://localhost:6379/0
-CELERY_RESULT_BACKEND=redis://localhost:6379/0
+# Worker configuration
+NMAP_WORKER_POOL_SIZE=4
 
 # Nmap configuration
 NMAP_REPORTS_DIR=/home/user/nmapwebui/instance/reports
@@ -93,27 +91,9 @@ python create_admin.py
 
 ## Running the Application Manually
 
-Start the required services in separate terminal sessions:
+The application now runs as a single process, managing the web server, background workers, and scheduler internally.
 
-### 1. Start Redis Server
-
-```bash
-redis-server
-```
-
-### 2. Start Celery Worker
-
-```bash
-python run_celery.py
-```
-
-### 3. Start Celery Beat Scheduler (for scheduled scans)
-
-```bash
-python run_celery_beat.py
-```
-
-### 4. Start Flask Application
+### 1. Start Flask Application
 
 ```bash
 python run_app.py
@@ -144,9 +124,8 @@ cp .env.docker.example .env
 # Database - path inside a container with a volume mount
 DATABASE_URL=sqlite:////app/instance/app.db
 
-# Redis - using Docker Compose service name
-CELERY_BROKER_URL=redis://nmapwebui-redis:6379/0
-CELERY_RESULT_BACKEND=redis://nmapwebui-redis:6379/0
+# Worker configuration
+NMAP_WORKER_POOL_SIZE=4
 
 # Reports directory - mounted volume path
 NMAP_REPORTS_DIR=/app/instance/reports
@@ -172,7 +151,6 @@ docker compose up -d
 
 This will:
 - Build the application image
-- Start Redis service
 - Start the NmapWebUI application with all services managed by Supervisor
 - Expose the application on `http://localhost:51234`
 
@@ -244,9 +222,7 @@ docker restart nmapwebui-container
 The application consists of several components:
 
 - **Flask Web Application** - main web interface and API
-- **Celery Worker** - handles background scan execution
-- **Celery Beat** - manages scheduled scan tasks
-- **Redis** - message broker and result backend for Celery
+- **APScheduler** - handles background scan execution and manages scheduled tasks
 - **SQLite Database** - stores application data (users, targets, scan configurations, results)
 
 ## License
