@@ -10,6 +10,9 @@ import pytz
 import atexit
 from datetime import datetime
 from config import Config
+from sqlalchemy import event, text
+from sqlalchemy.engine import Engine
+import logging as std_logging
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -18,6 +21,25 @@ login_manager = LoginManager()
 csrf = CSRFProtect()
 scheduler = BackgroundScheduler(timezone=pytz.UTC)
 _current_flask_app = None
+
+# Event listener to set PRAGMAs for SQLite connections
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    # Check if the connection is for SQLite. 
+    # dbapi_connection.__class__.__module__ might be 'sqlite3' or similar.
+    # A more direct check might be connection_record.dialect.name == 'sqlite'
+    # However, connection_record might not be fully populated for all event types or early connections.
+    # Assuming sqlite3 for now based on typical usage.
+    if hasattr(dbapi_connection, 'execute') and 'sqlite3' in str(type(dbapi_connection)).lower():
+        try:
+            cursor = dbapi_connection.cursor()
+            std_logging.info("Attempting to set PRAGMA journal_mode=WAL and busy_timeout=5000 for SQLite connection.")
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA busy_timeout = 5000;") # 5 seconds
+            cursor.close()
+            std_logging.info("Successfully set PRAGMA journal_mode=WAL and busy_timeout=5000.")
+        except Exception as e:
+            std_logging.error(f"Failed to set SQLite PRAGMAs: {e}")
 
 def create_app(config_class=Config, instance_path=None):
     global _current_flask_app
@@ -57,6 +79,16 @@ def create_app(config_class=Config, instance_path=None):
             from . import worker_manager # Import here to avoid circular dependencies at top level
             worker_manager.initialize_worker_pool()
 
+            # Ensure SQLite PRAGMAs are set up for the main engine by making an initial connection if needed.
+            with app.app_context():
+                if 'sqlite' in db.engine.url.drivername:
+                    try:
+                        with db.engine.connect() as connection:
+                            connection.execute(text("SELECT 1")) # A simple query to ensure a connection is made
+                        app.logger.info("SQLite PRAGMAs (WAL, busy_timeout) are configured via event listener. Tested main engine connection.")
+                    except Exception as e:
+                        app.logger.error(f"Error during initial SQLite PRAGMA setup test for main engine: {e}")
+
             # Add job for processing queued tasks
             from app.tasks.task_processor import process_queued_tasks
             if not scheduler.get_job('process_queued_nmap_tasks'):
@@ -65,7 +97,7 @@ def create_app(config_class=Config, instance_path=None):
                     func=process_queued_tasks,
                     trigger='interval',
                     seconds=15,  # Run every 15 seconds
-                    replace_existing=True
+                    replace_existing=True, coalesce=True, max_instances=1
                 )
             else:
                 pass

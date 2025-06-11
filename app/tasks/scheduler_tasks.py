@@ -1,7 +1,8 @@
 from flask import current_app, g
 from app import _current_flask_app
 from app import db  # Scheduler will be imported locally in functions
-from app.models.task import ScanTask, ScanRun
+from app.models.task import ScanTask, ScanRun, TaskLock
+from app.models.settings import SystemSettings
 from app.models.user import User
 from app.tasks.nmap_tasks import run_nmap_scan
 from datetime import datetime, timedelta
@@ -10,7 +11,7 @@ import pytz
 import logging
 import calendar
 import psutil
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, IntegrityError
 from app.utils.timezone_utils import convert_local_to_utc, get_user_timezone
 
 # Set up logging
@@ -399,13 +400,13 @@ def initialize_scheduled_tasks():
             trigger='interval',
             seconds=10, # Check every 10 seconds
             id='periodic_missed_run_checker',
-            replace_existing=True,
+            replace_existing=True, coalesce=True, max_instances=1,
             misfire_grace_time=300 # Allow 5 minutes for misfires
         )
         logger.info("Scheduled periodic check for missed runs (every 10 seconds).")
 
         # Add the periodic zombie task cleanup job
-        scheduler.add_job(func=cleanup_zombie_scan_runs, trigger='interval', minutes=1, id='periodic_zombie_cleanup', replace_existing=True)
+        scheduler.add_job(func=cleanup_zombie_scan_runs, trigger='interval', minutes=1, id='periodic_zombie_cleanup', replace_existing=True, coalesce=True, max_instances=1)
         logger.info("Scheduled periodic_zombie_cleanup to run every 1 minute.")
 
         logger.info("Scheduled tasks initialization complete.")
@@ -427,9 +428,7 @@ def schedule_task(task):
     user = User.query.get(task.user_id)
     user_timezone = user.timezone if user else 'UTC'
 
-    # Remove existing job if it exists
-    if scheduler.get_job(job_id):
-        scheduler.remove_job(job_id)
+    # Using replace_existing=True, coalesce=True, max_instances=1 in add_job() handles job updates atomically.
 
     if task.schedule_type == 'daily':
         hour = schedule_data.get('hour', 0)
@@ -461,7 +460,8 @@ def schedule_task(task):
             minute=minute,
             id=job_id,
             args=[task.id],
-            misfire_grace_time=3600  # Allow 1 hour for misfires
+            misfire_grace_time=3600,  # Allow 1 hour for misfires
+            replace_existing=True, coalesce=True, max_instances=1
         )
         job = scheduler.get_job(job_id)
         if job:
@@ -507,7 +507,8 @@ def schedule_task(task):
             minute=minute,
             id=job_id,
             args=[task.id],
-            misfire_grace_time=3600  # Allow 1 hour for misfires
+            misfire_grace_time=3600,  # Allow 1 hour for misfires
+            replace_existing=True, coalesce=True, max_instances=1
         )
         job = scheduler.get_job(job_id)
         if job:
@@ -566,7 +567,8 @@ def schedule_task(task):
                     minute=minute,
                     id=job_id,
                     args=[task.id],
-                    misfire_grace_time=3600  # Allow 1 hour for misfires
+                    misfire_grace_time=3600,  # Allow 1 hour for misfires
+                    replace_existing=True, coalesce=True, max_instances=1
                 )
                 return True
 
@@ -578,7 +580,8 @@ def schedule_task(task):
             minute=minute,
             id=job_id,
             args=[task.id],
-            misfire_grace_time=3600  # Allow 1 hour for misfires
+            misfire_grace_time=3600,  # Allow 1 hour for misfires
+            replace_existing=True, coalesce=True, max_instances=1
         )
         job = scheduler.get_job(job_id)
         if job:
@@ -609,7 +612,8 @@ def schedule_task(task):
                 run_date=utc_run_dt,
                 id=job_id,
                 args=[task.id],
-                misfire_grace_time=3600  # Allow 1 hour for misfires
+                misfire_grace_time=3600,  # Allow 1 hour for misfires
+                replace_existing=True, coalesce=True, max_instances=1
             )
             job = scheduler.get_job(job_id)
             if job:
@@ -638,7 +642,8 @@ def schedule_task(task):
             id=job_id,
             args=[task.id],
             start_date=start_date_utc,  # Set the explicit start date
-            misfire_grace_time=3600  # Allow 1 hour for misfires
+            misfire_grace_time=3600,  # Allow 1 hour for misfires
+            replace_existing=True, coalesce=True, max_instances=1
         )
 
         logger.info(f"Interval task {job_id} scheduled to start at {start_date_utc} and repeat every {hours} hours")
@@ -674,10 +679,28 @@ def create_scheduled_scan_run(task_id):
         return None # Or raise an exception
 
     with _current_flask_app.app_context():
+        lock_key = f"lock:create_run:task_{task_id}"
+        lock_acquired = False
         try:
+            # Attempt to acquire the lock by creating a TaskLock entry
+            new_lock_entry = TaskLock(lock_key=lock_key)
+            try:
+                db.session.add(new_lock_entry)
+                db.session.commit()
+                lock_acquired = True
+                logger.info(f"Acquired lock {lock_key} for task {task_id}. Proceeding to create scan run.")
+            except IntegrityError: # Specific to SQLAlchemy, handles underlying DB unique constraint errors
+                db.session.rollback() # Rollback the failed session
+                logger.info(f"Could not acquire lock {lock_key} for task {task_id} (already held). Another worker is likely processing it. Skipping.")
+                return None
+            except Exception as e_lock_acquire: # Catch other potential errors during lock acquisition
+                db.session.rollback()
+                logger.error(f"Error acquiring lock {lock_key} for task {task_id}: {e_lock_acquire}")
+                return None
+
             logger.info(f"Creating scheduled scan run for task {task_id}")
 
-            # First, get the task without locking
+            # First, get the task
             task = ScanTask.query.get(task_id)
             if not task:
                 logger.error(f"Task {task_id} not found")
@@ -727,3 +750,17 @@ def create_scheduled_scan_run(task_id):
             if 'db' in locals() and db.session.is_active:
                 db.session.rollback()
             return None
+        finally:
+            if lock_acquired:
+                try:
+                    lock_to_release = db.session.get(TaskLock, lock_key) # Use db.session.get for primary key lookup
+                    if lock_to_release:
+                        db.session.delete(lock_to_release)
+                        db.session.commit()
+                        logger.info(f"Released lock {lock_key} for task {task_id}.")
+                    else:
+                        logger.warning(f"Attempted to release lock {lock_key} but it was not found in the database.")
+                except Exception as e_lock_release:
+                    logger.error(f"Error releasing lock {lock_key} for task {task_id}: {e_lock_release}")
+                    if db.session.is_active:
+                        db.session.rollback()

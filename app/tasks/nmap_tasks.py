@@ -191,6 +191,7 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
         
         # Add -v for verbose output to make it easier to track progress
         cmd = f"{sudo_prefix}{nmap_path} -v {nmap_args} {sanitized_target_string}"
+        current_app.logger.info(f"[ScanRun {scan_run_id}] Executing Nmap command: {cmd}")
         
         try:
             process = subprocess.Popen(
@@ -200,6 +201,7 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                 stderr=subprocess.STDOUT,
                 universal_newlines=True
             )
+            current_app.logger.info(f"[ScanRun {scan_run_id}] Nmap process started with PID: {process.pid}")
             
             # Store the process PID in the database
             with current_app.app_context():
@@ -238,6 +240,7 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                 continue
                 
             line = output.strip()
+            current_app.logger.debug(f"[ScanRun {scan_run_id}] Nmap stdout: {line}")
             
             # Store recent output lines for context
             output_buffer.append(line)
@@ -340,9 +343,14 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
             if 'Nmap done' in line: 
                 current_app.logger.info(f"[ScanRun {scan_run_id}] Scan completed successfully!")
                 with current_app.app_context():
-                    scan_run = ScanRun.query.get(scan_run_id)
-                    scan_run.status = 'completed'
-                    db.session.commit()
+                    # Re-fetch the scan_run object within this context
+                    current_scan_run = ScanRun.query.get(scan_run_id)
+                    if current_scan_run:
+                        current_scan_run.status = 'completed'
+                        current_scan_run.completed_at = datetime.utcnow() # Also set completed_at
+                        db.session.commit()
+                    else:
+                        current_app.logger.error(f"[ScanRun {scan_run_id}] ScanRun object was not found in the database when trying to mark as 'completed'. It might have been deleted externally.")
         
         # Process has completed
         return_code = process.poll()
