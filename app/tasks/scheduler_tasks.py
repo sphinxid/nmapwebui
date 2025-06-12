@@ -12,6 +12,7 @@ import logging
 import calendar
 import psutil
 from sqlalchemy.exc import OperationalError, IntegrityError
+from sqlalchemy import inspect
 from app.utils.timezone_utils import convert_local_to_utc, get_user_timezone
 
 # Set up logging
@@ -381,8 +382,20 @@ def cleanup_zombie_scan_runs():
 
 def initialize_scheduled_tasks():
     """Initializes all scheduled tasks from the database and the periodic missed run checker."""
-    from app import scheduler
+    from app import scheduler, db
     logger.info("Initializing scheduled tasks...")
+
+    try:
+        inspector = inspect(db.engine)
+        # Check if the 'scan_tasks' table exists. This prevents errors on first-time setup.
+        if not inspector.has_table(ScanTask.__tablename__):
+            logger.info(f"Table '{ScanTask.__tablename__}' not found. Skipping scheduled tasks initialization. This is expected during initial database setup.")
+            return
+    except Exception as e:
+        logger.error(f"Error while checking for table existence during scheduler initialization: {e}", exc_info=True)
+        # If we can't even inspect the DB, it's safer not to proceed.
+        return
+
     try:
         # Get all tasks that are marked as scheduled
         tasks_to_schedule = ScanTask.query.filter_by(is_scheduled=True).all()
@@ -410,6 +423,9 @@ def initialize_scheduled_tasks():
         logger.info("Scheduled periodic_zombie_cleanup to run every 1 minute.")
 
         logger.info("Scheduled tasks initialization complete.")
+    except OperationalError as e:
+        # This is a fallback. The check above should prevent this, but we keep it for safety.
+        logger.warning(f"Caught an OperationalError during scheduled task initialization. The database might not be fully ready. Error: {e}")
     except Exception as e:
         logger.error(f"Error during scheduled tasks initialization: {str(e)}", exc_info=True)
 
