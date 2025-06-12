@@ -11,6 +11,7 @@ import pytz
 import logging
 import calendar
 import psutil
+import sys
 from sqlalchemy.exc import OperationalError, IntegrityError
 from sqlalchemy import inspect
 from app.utils.timezone_utils import convert_local_to_utc, get_user_timezone
@@ -73,8 +74,13 @@ def get_all_scheduled_tasks_info():
             job = scheduler.get_job(job_id)
 
             next_run = "Not scheduled"
-            if job and job.next_run_time:
-                next_run = job.next_run_time
+            try:
+                if job and hasattr(job, 'next_run_time') and job.next_run_time:
+                    next_run = job.next_run_time
+            except Exception as e:
+                logger.error(f"Error accessing next_run_time for task {task.id}: {str(e)}")
+                print(f"ERROR: Error accessing next_run_time for task {task.id}: {str(e)}", file=sys.stdout)
+                sys.stdout.flush()
 
             logger.info(f"  Task ID: {task.id}, Name: {task.name}, Next run: {next_run}")
 
@@ -123,13 +129,29 @@ def check_missed_scheduled_runs():
                         meta_job = scheduler.get_job(meta_job_id)
 
                         # Use the metadata job if it exists
-                        if meta_job and meta_job.next_run_time:
-                            job = meta_job
-                        # Use the one-time job if it exists
-                        elif one_time_job and one_time_job.next_run_time:
-                            job = one_time_job
+                        try:
+                            if meta_job and hasattr(meta_job, 'next_run_time') and meta_job.next_run_time:
+                                job = meta_job
+                                logger.info(f"Using metadata job for task {task.id}")
+                            # Use the one-time job if it exists
+                            elif one_time_job and hasattr(one_time_job, 'next_run_time') and one_time_job.next_run_time:
+                                job = one_time_job
+                                logger.info(f"Using one-time job for task {task.id}")
+                        except Exception as e:
+                            logger.error(f"Error checking job schedule for task {task.id}: {str(e)}")
+                            print(f"ERROR: Error checking job schedule for task {task.id}: {str(e)}", file=sys.stdout)
+                            sys.stdout.flush()
 
-                    if not job or not job.next_run_time:
+                    # Safely check job next_run_time with proper attribute verification
+                    has_valid_schedule = False
+                    try:
+                        has_valid_schedule = job and hasattr(job, 'next_run_time') and job.next_run_time is not None
+                    except Exception as e:
+                        logger.error(f"Error checking next_run_time for task {task.id}: {str(e)}")
+                        print(f"ERROR: Error checking next_run_time for task {task.id}: {str(e)}", file=sys.stdout)
+                        sys.stdout.flush()
+                        
+                    if not has_valid_schedule:
                         logger.warning(f"Task {task.id} has no valid schedule, skipping check")
                         continue
 
@@ -243,8 +265,22 @@ def check_missed_scheduled_runs():
                         logger.debug(f"Task {task.id} (Monthly): User Day:{user_day_of_month} {user_hour:02d}:{user_minute:02d} {user_timezone_str}. Ref UTC: {utc_reference_schedule_time}.")
 
                     elif task.schedule_type == 'interval':
-                        utc_reference_schedule_time = job.next_run_time if job.next_run_time else now_utc # Best guess for reference
-                        logger.debug(f"Task {task.id} (Interval): Ref UTC from job.next_run_time: {utc_reference_schedule_time}.")
+                        try:
+                            # Safely access next_run_time with attribute checking
+                            if hasattr(job, 'next_run_time') and job.next_run_time is not None:
+                                utc_reference_schedule_time = job.next_run_time
+                                logger.debug(f"Task {task.id} (Interval): Ref UTC from job.next_run_time: {utc_reference_schedule_time}.")
+                            else:
+                                utc_reference_schedule_time = now_utc
+                                logger.debug(f"Task {task.id} (Interval): Using current time as reference since next_run_time is not available.")
+                                print(f"SCHEDULED_TASK: Task {task.id} (Interval) - next_run_time attribute not available, using current time", file=sys.stdout)
+                                sys.stdout.flush()
+                        except Exception as e:
+                            # Use current time as fallback and log the error
+                            utc_reference_schedule_time = now_utc
+                            logger.error(f"Task {task.id} (Interval): Error accessing job.next_run_time: {str(e)}. Using current time.")
+                            print(f"ERROR: Task {task.id} (Interval) - Error accessing job.next_run_time: {str(e)}", file=sys.stdout)
+                            sys.stdout.flush()
 
                     else:
                         logger.warning(f"Task {task.id} has unknown schedule type '{task.schedule_type}'. Skipping.")
@@ -261,11 +297,20 @@ def check_missed_scheduled_runs():
                     logger.debug(f"[Task {task.id}] Last run (UTC): {last_run_time_utc}. Reference schedule time (UTC): {utc_reference_schedule_time}")
 
                     if task.schedule_type == 'interval':
-                        if job.next_run_time and job.next_run_time < now_utc:
-                            logger.info(f"[Task {task.id}] INTERVAL MISSED RUN DETECTED. Job next_run_time: {job.next_run_time} < Current time: {now_utc}. Queuing new scan run.")
-                            create_scheduled_scan_run(task.id)
-                        else:
-                            logger.info(f"[Task {task.id}] Interval task appears to be on schedule. Next run: {job.next_run_time}. Current: {now_utc}.")
+                        try:
+                            # Safely check if this is a missed run using proper attribute checking
+                            if hasattr(job, 'next_run_time') and job.next_run_time and job.next_run_time < now_utc:
+                                logger.info(f"[Task {task.id}] INTERVAL MISSED RUN DETECTED. Job next_run_time: {job.next_run_time} < Current time: {now_utc}. Queuing new scan run.")
+                                print(f"TASK_EVENT: [Task {task.id}] INTERVAL MISSED RUN DETECTED. Queuing new scan run.", file=sys.stdout)
+                                sys.stdout.flush()
+                                create_scheduled_scan_run(task.id)
+                            else:
+                                next_run_str = job.next_run_time if hasattr(job, 'next_run_time') and job.next_run_time else "Unknown"
+                                logger.info(f"[Task {task.id}] Interval task appears to be on schedule. Next run: {next_run_str}. Current: {now_utc}.")
+                        except Exception as e:
+                            logger.error(f"[Task {task.id}] Error checking interval schedule: {str(e)}")
+                            print(f"ERROR: [Task {task.id}] Error checking interval schedule: {str(e)}", file=sys.stdout)
+                            sys.stdout.flush()
                     elif last_run_time_utc is None or last_run_time_utc < utc_reference_schedule_time:
                         max_age_for_missed_run = timedelta(days=2)
                         if task.schedule_type == 'weekly': max_age_for_missed_run = timedelta(days=8)
@@ -479,11 +524,24 @@ def schedule_task(task):
             misfire_grace_time=3600,  # Allow 1 hour for misfires
             replace_existing=True, coalesce=True, max_instances=1
         )
-        job = scheduler.get_job(job_id)
-        if job:
-            logger.info(f"Scheduled daily task {job_id} with next run time: {job.next_run_time} (UTC)")
-        else:
-            logger.error(f"Failed to schedule daily task {job_id} or retrieve job details.")
+        try:
+            # Safely get job and its next_run_time with error handling
+            job = scheduler.get_job(job_id)
+            if job:
+                # Use hasattr to safely check for attribute existence
+                if hasattr(job, 'next_run_time'):
+                    logger.info(f"Scheduled daily task {job_id} with next run time: {job.next_run_time} (UTC)")
+                else:
+                    # Safely log without accessing the attribute
+                    logger.info(f"Scheduled daily task {job_id} successfully, next run time attribute not available")
+                    print(f"SCHEDULED_TASK: Daily task {job_id} scheduled successfully but next_run_time attribute is not available", file=sys.stdout)
+                    sys.stdout.flush()
+            else:
+                logger.error(f"Failed to schedule daily task {job_id} or retrieve job details.")
+        except Exception as e:
+            logger.error(f"Error checking daily job status for {job_id}: {str(e)}")
+            print(f"ERROR: Error checking daily job status for {job_id}: {str(e)}", file=sys.stdout)
+            sys.stdout.flush()
 
     elif task.schedule_type == 'weekly':
         day_of_week = schedule_data.get('day_of_week', 0)  # Monday is 0
@@ -526,11 +584,24 @@ def schedule_task(task):
             misfire_grace_time=3600,  # Allow 1 hour for misfires
             replace_existing=True, coalesce=True, max_instances=1
         )
-        job = scheduler.get_job(job_id)
-        if job:
-            logger.info(f"Scheduled weekly task {job_id} with next run time: {job.next_run_time} (UTC)")
-        else:
-            logger.error(f"Failed to schedule weekly task {job_id} or retrieve job details.")
+        try:
+            # Safely get job and its next_run_time with error handling
+            job = scheduler.get_job(job_id)
+            if job:
+                # Use hasattr to safely check for attribute existence
+                if hasattr(job, 'next_run_time'):
+                    logger.info(f"Scheduled weekly task {job_id} with next run time: {job.next_run_time} (UTC)")
+                else:
+                    # Safely log without accessing the attribute
+                    logger.info(f"Scheduled weekly task {job_id} successfully, next run time attribute not available")
+                    print(f"SCHEDULED_TASK: Weekly task {job_id} scheduled successfully but next_run_time attribute is not available", file=sys.stdout)
+                    sys.stdout.flush()
+            else:
+                logger.error(f"Failed to schedule weekly task {job_id} or retrieve job details.")
+        except Exception as e:
+            logger.error(f"Error checking weekly job status for {job_id}: {str(e)}")
+            print(f"ERROR: Error checking weekly job status for {job_id}: {str(e)}", file=sys.stdout)
+            sys.stdout.flush()
 
     elif task.schedule_type == 'monthly':
         day = schedule_data.get('day', 1)  # First day of month
@@ -599,11 +670,24 @@ def schedule_task(task):
             misfire_grace_time=3600,  # Allow 1 hour for misfires
             replace_existing=True, coalesce=True, max_instances=1
         )
-        job = scheduler.get_job(job_id)
-        if job:
-            logger.info(f"Scheduled monthly task {job_id} with next run time: {job.next_run_time} (UTC)")
-        else:
-            logger.error(f"Failed to schedule monthly task {job_id} or retrieve job details.")
+        try:
+            # Safely get job and its next_run_time with error handling
+            job = scheduler.get_job(job_id)
+            if job:
+                # Use hasattr to safely check for attribute existence
+                if hasattr(job, 'next_run_time'):
+                    logger.info(f"Scheduled monthly task {job_id} with next run time: {job.next_run_time} (UTC)")
+                else:
+                    # Safely log without accessing the attribute
+                    logger.info(f"Scheduled monthly task {job_id} successfully, next run time attribute not available")
+                    print(f"SCHEDULED_TASK: Monthly task {job_id} scheduled successfully but next_run_time attribute is not available", file=sys.stdout)
+                    sys.stdout.flush()
+            else:
+                logger.error(f"Failed to schedule monthly task {job_id} or retrieve job details.")
+        except Exception as e:
+            logger.error(f"Error checking monthly job status for {job_id}: {str(e)}")
+            print(f"ERROR: Error checking monthly job status for {job_id}: {str(e)}", file=sys.stdout)
+            sys.stdout.flush()
 
     elif task.schedule_type == 'one-time':
         run_datetime_str = schedule_data.get('run_datetime_str') # Expected format: 'YYYY-MM-DD HH:MM:SS'
@@ -631,11 +715,24 @@ def schedule_task(task):
                 misfire_grace_time=3600,  # Allow 1 hour for misfires
                 replace_existing=True, coalesce=True, max_instances=1
             )
-            job = scheduler.get_job(job_id)
-            if job:
-                logger.info(f"Scheduled one-time task {job_id} for: {job.next_run_time} (UTC)")
-            else:
-                logger.error(f"Failed to schedule one-time task {job_id} or retrieve job details.")
+            try:
+                # Safely get job and its next_run_time with error handling
+                job = scheduler.get_job(job_id)
+                if job:
+                    # Use hasattr to safely check for attribute existence
+                    if hasattr(job, 'next_run_time'):
+                        logger.info(f"Scheduled one-time task {job_id} for: {job.next_run_time} (UTC)")
+                    else:
+                        # Safely log without accessing the attribute
+                        logger.info(f"Scheduled one-time task {job_id} successfully, next run time attribute not available")
+                        print(f"SCHEDULED_TASK: One-time task {job_id} scheduled successfully but next_run_time attribute is not available", file=sys.stdout)
+                        sys.stdout.flush()
+                else:
+                    logger.error(f"Failed to schedule one-time task {job_id} or retrieve job details.")
+            except Exception as e:
+                logger.error(f"Error checking one-time job status for {job_id}: {str(e)}")
+                print(f"ERROR: Error checking one-time job status for {job_id}: {str(e)}", file=sys.stdout)
+                sys.stdout.flush()
 
         except ValueError as ve:
             logger.error(f"Error parsing 'run_datetime_str' for one-time task {task.id}: {ve}. Expected format 'YYYY-MM-DD HH:MM:SS'.")
@@ -663,11 +760,25 @@ def schedule_task(task):
         )
 
         logger.info(f"Interval task {job_id} scheduled to start at {start_date_utc} and repeat every {hours} hours")
-        job = scheduler.get_job(job_id)
-        if job:
-            logger.info(f"Scheduled interval task {job_id} with first run time: {job.next_run_time} (UTC)")
-        else:
-            logger.error(f"Failed to schedule interval task {job_id} or retrieve job details.")
+        
+        try:
+            # Safely get job and its next_run_time with error handling
+            job = scheduler.get_job(job_id)
+            if job:
+                # Use hasattr to safely check for attribute existence
+                if hasattr(job, 'next_run_time'):
+                    logger.info(f"Scheduled interval task {job_id} with first run time: {job.next_run_time} (UTC)")
+                else:
+                    # Safely log without accessing the attribute
+                    logger.info(f"Scheduled interval task {job_id} successfully, next run time attribute not available")
+                    print(f"SCHEDULED_TASK: Interval task {job_id} scheduled successfully but next_run_time attribute is not available", file=sys.stdout)
+                    sys.stdout.flush()
+            else:
+                logger.error(f"Failed to schedule interval task {job_id} or retrieve job details.")
+        except Exception as e:
+            logger.error(f"Error checking job status for {job_id}: {str(e)}")
+            print(f"ERROR: Error checking job status for {job_id}: {str(e)}", file=sys.stdout)
+            sys.stdout.flush()
 
     return True
 
@@ -691,7 +802,10 @@ def create_scheduled_scan_run(task_id):
         task_id: The ID of the task to run
     """
     if _current_flask_app is None:
-        logger.error(f"CRITICAL: Flask app instance (_current_flask_app) is None. Cannot create app context for create_scheduled_scan_run (task_id: {task_id}).")
+        error_msg = f"CRITICAL: Flask app instance (_current_flask_app) is None. Cannot create app context for create_scheduled_scan_run (task_id: {task_id})."
+        logger.error(error_msg)
+        print(f"CRITICAL ERROR: {error_msg}", file=sys.stdout)
+        sys.stdout.flush()
         return None # Or raise an exception
 
     with _current_flask_app.app_context():
@@ -701,43 +815,70 @@ def create_scheduled_scan_run(task_id):
             # Attempt to acquire the lock by creating a TaskLock entry
             new_lock_entry = TaskLock(lock_key=lock_key)
             try:
+                print(f"SCHEDULED_TASK: [Task {task_id}] Attempting to acquire task lock {lock_key}", file=sys.stdout)
+                sys.stdout.flush()
                 db.session.add(new_lock_entry)
                 db.session.commit()
                 lock_acquired = True
-                logger.info(f"Acquired lock {lock_key} for task {task_id}. Proceeding to create scan run.")
+                lock_info = f"Acquired lock {lock_key} for task {task_id}. Proceeding to create scan run."
+                logger.info(lock_info)
+                print(f"SCHEDULED_TASK: {lock_info}", file=sys.stdout)
+                sys.stdout.flush()
             except IntegrityError: # Specific to SQLAlchemy, handles underlying DB unique constraint errors
                 db.session.rollback() # Rollback the failed session
-                logger.info(f"Could not acquire lock {lock_key} for task {task_id} (already held). Another worker is likely processing it. Skipping.")
+                lock_warning = f"Could not acquire lock {lock_key} for task {task_id} (already held). Another worker is likely processing it. Skipping."
+                logger.info(lock_warning)
+                print(f"WARNING: {lock_warning}", file=sys.stdout)
+                sys.stdout.flush()
                 return None
             except Exception as e_lock_acquire: # Catch other potential errors during lock acquisition
                 db.session.rollback()
-                logger.error(f"Error acquiring lock {lock_key} for task {task_id}: {e_lock_acquire}")
+                lock_error = f"Error acquiring lock {lock_key} for task {task_id}: {e_lock_acquire}"
+                logger.error(lock_error)
+                print(f"ERROR: {lock_error}", file=sys.stdout)
+                sys.stdout.flush()
                 return None
 
-            logger.info(f"Creating scheduled scan run for task {task_id}")
+            task_info = f"Creating scheduled scan run for task {task_id}"
+            logger.info(task_info)
+            print(f"SCHEDULED_TASK: {task_info}", file=sys.stdout)
+            sys.stdout.flush()
 
             # First, get the task
             task = ScanTask.query.get(task_id)
             if not task:
-                logger.error(f"Task {task_id} not found")
+                task_not_found = f"Task {task_id} not found"
+                logger.error(task_not_found)
+                print(f"ERROR: {task_not_found}", file=sys.stdout)
+                sys.stdout.flush()
                 return None
 
             # Check if task is still scheduled
             if not task.is_scheduled:
-                logger.warning(f"Task {task_id} is no longer scheduled, skipping run")
+                not_scheduled = f"Task {task_id} is no longer scheduled, skipping run"
+                logger.warning(not_scheduled)
+                print(f"WARNING: {not_scheduled}", file=sys.stdout)
+                sys.stdout.flush()
                 return None
 
             # Check if there's already a queued or running scan for this task
+            print(f"SCHEDULED_TASK: [Task {task_id}] Checking for existing queued or running scans", file=sys.stdout)
+            sys.stdout.flush()
             existing_scan = ScanRun.query.filter(
                 ScanRun.task_id == task.id,
                 ScanRun.status.in_(['queued', 'running'])
             ).first()
 
             if existing_scan:
-                logger.warning(f"Task {task_id} already has a {existing_scan.status} scan (ID: {existing_scan.id}), not creating a new one for missed schedule.")
+                duplicate_msg = f"Task {task_id} already has a {existing_scan.status} scan (ID: {existing_scan.id}), not creating a new one for missed schedule."
+                logger.warning(duplicate_msg)
+                print(f"WARNING: {duplicate_msg}", file=sys.stdout)
+                sys.stdout.flush()
                 return None
 
             # Create a new scan run
+            print(f"SCHEDULED_TASK: [Task {task_id}] Creating new scan run with status 'queued'", file=sys.stdout)
+            sys.stdout.flush()
             scan_run = ScanRun(
                 task_id=task.id,
                 status='queued',
@@ -746,37 +887,67 @@ def create_scheduled_scan_run(task_id):
             )
             try:
                 db.session.add(scan_run)
+                print(f"SCHEDULED_TASK: [Task {task_id}] Committing new scan run to database", file=sys.stdout)
+                sys.stdout.flush()
                 db.session.commit()
                 scan_run_id = scan_run.id # Get the ID after commit
-                logger.info(f"Created scan run {scan_run.id} for scheduled task {task.id}")
-                logger.info(f"Scan run {scan_run_id} created and queued. It will be processed by the task processor.")
+                created_msg = f"Created scan run {scan_run.id} for scheduled task {task.id}"
+                logger.info(created_msg)
+                print(f"SCHEDULED_TASK: {created_msg}", file=sys.stdout)
+                queued_msg = f"Scan run {scan_run_id} created and queued. It will be processed by the task processor."
+                logger.info(queued_msg)
+                print(f"SCHEDULED_TASK: {queued_msg}", file=sys.stdout)
+                sys.stdout.flush()
                 return scan_run_id
             except OperationalError as oe:
                     if 'UNIQUE constraint failed' in str(oe):
-                        logger.warning(f"Task {task_id} already has a queued or running scan, skipping")
+                        unique_error = f"Task {task_id} already has a queued or running scan, skipping"
+                        logger.warning(unique_error)
+                        print(f"WARNING: {unique_error}", file=sys.stdout)
+                        sys.stdout.flush()
                         db.session.rollback()
                         return None
                     else:
-                        logger.warning(f"Database error while processing task {task_id}: {str(oe)}")
+                        db_error = f"Database error while processing task {task_id}: {str(oe)}"
+                        logger.warning(db_error)
+                        print(f"ERROR: {db_error}", file=sys.stdout)
+                        sys.stdout.flush()
                         db.session.rollback()
                         return None
 
         except Exception as e:
-            logger.error(f"Error creating scheduled scan run for task {task_id}: {str(e)}")
+            error_msg = f"Error creating scheduled scan run for task {task_id}: {str(e)}"
+            logger.error(error_msg)
+            print(f"ERROR: {error_msg}", file=sys.stdout)
+            # Print stack trace to STDOUT for debugging
+            import traceback
+            print(f"EXCEPTION TRACE: [Task {task_id}]\n{traceback.format_exc()}", file=sys.stdout)
+            sys.stdout.flush()
             if 'db' in locals() and db.session.is_active:
                 db.session.rollback()
             return None
         finally:
             if lock_acquired:
                 try:
+                    print(f"SCHEDULED_TASK: [Task {task_id}] Attempting to release lock {lock_key}", file=sys.stdout)
+                    sys.stdout.flush()
                     lock_to_release = db.session.get(TaskLock, lock_key) # Use db.session.get for primary key lookup
                     if lock_to_release:
                         db.session.delete(lock_to_release)
                         db.session.commit()
-                        logger.info(f"Released lock {lock_key} for task {task_id}.")
+                        release_msg = f"Released lock {lock_key} for task {task_id}."
+                        logger.info(release_msg)
+                        print(f"SCHEDULED_TASK: {release_msg}", file=sys.stdout)
+                        sys.stdout.flush()
                     else:
-                        logger.warning(f"Attempted to release lock {lock_key} but it was not found in the database.")
+                        not_found_msg = f"Attempted to release lock {lock_key} but it was not found in the database."
+                        logger.warning(not_found_msg)
+                        print(f"WARNING: {not_found_msg}", file=sys.stdout)
+                        sys.stdout.flush()
                 except Exception as e_lock_release:
-                    logger.error(f"Error releasing lock {lock_key} for task {task_id}: {e_lock_release}")
+                    release_error = f"Error releasing lock {lock_key} for task {task_id}: {e_lock_release}"
+                    logger.error(release_error)
+                    print(f"ERROR: {release_error}", file=sys.stdout)
+                    sys.stdout.flush()
                     if db.session.is_active:
                         db.session.rollback()

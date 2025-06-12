@@ -1,6 +1,7 @@
 import multiprocessing
 import logging
 import atexit
+import sys
 from functools import partial
 from datetime import datetime
 import pytz # For timezone-aware ended_at, if used
@@ -30,11 +31,17 @@ def initialize_worker_pool():
     global WORKER_POOL
     if WORKER_POOL is None:
         logger.info("Initializing worker pool with %s processes.", pool_size)
-        # Note: If tasks require specific Flask app context or DB setup not handled
-        # within the task function itself, an initializer function for the pool might be needed.
-        # run_nmap_scan creates its own app context, which is good.
-        WORKER_POOL = multiprocessing.Pool(processes=pool_size)
+        print(f"WORKER_POOL: Initializing worker pool with {pool_size} processes", file=sys.stdout)
+        sys.stdout.flush()
+        
+        # Set daemon=False explicitly to prevent "daemonic processes are not allowed to have children" error
+        # This ensures the pool processes can spawn nmap child processes
+        ctx = multiprocessing.get_context('spawn')  # Use 'spawn' context for better cross-platform compatibility
+        WORKER_POOL = ctx.Pool(processes=pool_size)
+        
         logger.info("Worker pool initialized.")
+        print(f"WORKER_POOL: Worker pool initialized successfully", file=sys.stdout)
+        sys.stdout.flush()
 
 def shutdown_worker_pool():
     """Shuts down the global worker pool gracefully."""
@@ -137,32 +144,67 @@ def scan_error_callback(scan_run_id, exception):
                 db.session.rollback()
 
 def submit_nmap_scan(scan_run_id, scan_task_id_for_lock):
-    """Submits an Nmap scan task to the worker pool."""
-    # WORKER_POOL is expected to be initialized by create_app in app/__init__.py
+    """Submits an Nmap scan task to the worker pool.
+    
+    In our single-worker-pool architecture, only the primary worker has an initialized pool.
+    Non-primary workers will update the scan status to indicate it needs to be run by the primary worker.
+    """
+    # Get current process ID for logging
+    process_id = os.getpid()
+    
+    # Check if this worker has an initialized worker pool (only primary worker should)
     if WORKER_POOL is None:
-        logger.error("Worker pool is not initialized. Cannot submit task. Check application startup.")
+        logger.warning(f"Worker PID={process_id} has no worker pool initialized (non-primary worker).")
+        print(f"WORKER_POOL_WARN: Worker PID={process_id} has no worker pool (non-primary worker)", file=sys.stdout)
+        sys.stdout.flush()
+        
+        # Update the scan run status to indicate it needs to be picked up by primary worker
+        # This allows the primary worker's scheduler to find and run this task
+        from app import _current_flask_app, db
+        from app.models.task import ScanRun
+        
+        if _current_flask_app:
+            with _current_flask_app.app_context():
+                try:
+                    scan_run = db.session.get(ScanRun, scan_run_id)
+                    if scan_run:
+                        scan_run.status = 'queued'  # Mark as queued for the scheduler to pick up
+                        scan_run.last_error = f"Redirected to primary worker pool (PID={process_id} is non-primary)"
+                        db.session.commit()
+                        logger.info(f"Scan run {scan_run_id} marked as queued for pickup by primary worker")
+                        print(f"WORKER_POOL_INFO: Scan run {scan_run_id} marked as queued for primary worker", file=sys.stdout)
+                        sys.stdout.flush()
+                        return True
+                    else:
+                        logger.error(f"ScanRun {scan_run_id} not found in submit_nmap_scan from non-primary worker.")
+                        return False
+                except Exception as e:
+                    logger.error(f"Error updating scan run {scan_run_id} status: {str(e)}")
+                    if db.session.is_active:
+                        db.session.rollback()
+                    return False
         return False
     
-    # No 'global WORKER_POOL' needed here if we are only reading it.
-    # However, if initialize_worker_pool could be called, it would modify the global.
-    # Since we removed the internal init, direct read is fine.
-    if WORKER_POOL:
-        try:
-            logger.info("Submitting nmap scan for scan_run_id: %s (task_id_for_lock: %s) to worker pool.", scan_run_id, scan_task_id_for_lock)
-            # apply_async is non-blocking. Use callbacks to handle results/errors.
-            success_cb = partial(scan_success_callback, scan_run_id)
-            error_cb = partial(scan_error_callback, scan_run_id)
+    # Primary worker with initialized pool
+    try:
+        logger.info(f"Worker PID={process_id} submitting nmap scan for scan_run_id: {scan_run_id} to worker pool.")
+        print(f"WORKER_POOL_INFO: Worker PID={process_id} submitting scan {scan_run_id} to pool", file=sys.stdout)
+        sys.stdout.flush()
+        
+        # apply_async is non-blocking. Use callbacks to handle results/errors.
+        success_cb = partial(scan_success_callback, scan_run_id)
+        error_cb = partial(scan_error_callback, scan_run_id)
 
-            WORKER_POOL.apply_async(
-                run_nmap_scan, 
-                args=(scan_run_id, scan_task_id_for_lock),
-                callback=success_cb,
-                error_callback=error_cb
-            )
-            logger.info("Nmap scan for scan_run_id: %s submitted successfully with callbacks.", scan_run_id)
-            return True
-        except Exception as e:
-            # This catch is for errors during submission to the pool itself.
+        WORKER_POOL.apply_async(
+            run_nmap_scan, 
+            args=(scan_run_id, scan_task_id_for_lock),
+            callback=success_cb,
+            error_callback=error_cb
+        )
+        logger.info(f"Nmap scan for scan_run_id: {scan_run_id} submitted successfully with callbacks.")
+        return True
+    except Exception as e:
+        # This catch is for errors during submission to the pool itself.
             # Errors within run_nmap_scan are handled inside that function.
             logger.error("Failed to submit nmap scan for scan_run_id %s to worker pool: %s", scan_run_id, e)
             # Consider how to report this failure, e.g., update ScanRun status directly if possible,

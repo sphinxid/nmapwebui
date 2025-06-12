@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import signal
 import atexit
+import sys
 from app import db
 from app.models.task import ScanRun
 from app.models.report import ScanReport, HostFinding, PortFinding
@@ -27,12 +28,17 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
         # Get the scan run from the database
         scan_run = ScanRun.query.get(scan_run_id)
         if not scan_run:
-            current_app.logger.error(f"[ScanRun {scan_run_id}] Scan run {scan_run_id} not found during task execution.")
+            error_msg = f"[ScanRun {scan_run_id}] Scan run {scan_run_id} not found during task execution."
+            current_app.logger.error(error_msg)
+            print(f"ERROR: {error_msg}", file=sys.stdout)
+            sys.stdout.flush()
             return
     
         # Update scan run status to 'starting'
         scan_run.status = 'starting'
         scan_run.started_at = datetime.utcnow()
+        print(f"TASK_EVENT: [ScanRun {scan_run_id}] Task status changed to 'starting' at {scan_run.started_at.strftime('%Y-%m-%d %H:%M:%S')}", file=sys.stdout)
+        sys.stdout.flush()
         db.session.commit() # Moved inside the context
     
     try:
@@ -201,7 +207,10 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                 stderr=subprocess.STDOUT,
                 universal_newlines=True
             )
-            current_app.logger.info(f"[ScanRun {scan_run_id}] Nmap process started with PID: {process.pid}")
+            pid_msg = f"[ScanRun {scan_run_id}] Nmap process started with PID: {process.pid}"
+            current_app.logger.info(pid_msg)
+            print(f"TASK_EVENT: {pid_msg}", file=sys.stdout)
+            sys.stdout.flush()
             
             # Store the process PID in the database
             with current_app.app_context():
@@ -210,20 +219,34 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                     # Update status from 'starting' to 'running' now that the nmap process has started
                     scan_run.status = 'running'
                     scan_run.nmap_pid = process.pid
-                    current_app.logger.info(f"[ScanRun {scan_run_id}] Attempting to commit PID {process.pid} and status 'running'.")
+                    pid_commit_msg = f"[ScanRun {scan_run_id}] Attempting to commit PID {process.pid} and status 'running'."
+                    current_app.logger.info(pid_commit_msg)
+                    print(f"TASK_EVENT: {pid_commit_msg}", file=sys.stdout)
+                    sys.stdout.flush()
                     db.session.commit()
-                    current_app.logger.info(f"[ScanRun {scan_run_id}] Successfully committed PID {process.pid} and status 'running'.")
+                    pid_success_msg = f"[ScanRun {scan_run_id}] Successfully committed PID {process.pid} and status 'running'."
+                    current_app.logger.info(pid_success_msg)
+                    print(f"TASK_EVENT: {pid_success_msg}", file=sys.stdout)
+                    sys.stdout.flush()
         except Exception as e:
-            current_app.logger.error(f"[ScanRun {scan_run_id}] Error starting Nmap process: {str(e)}")
+            error_msg = f"[ScanRun {scan_run_id}] Error starting Nmap process: {str(e)}"
+            current_app.logger.error(error_msg)
+            print(f"ERROR: {error_msg}", file=sys.stdout)
+            sys.stdout.flush()
             with current_app.app_context():
                 scan_run = ScanRun.query.get(scan_run_id)
                 if scan_run: # Ensure scan_run object exists
                     scan_run.status = 'failed'
                     scan_run.completed_at = datetime.utcnow()
                     scan_run.error_message = str(e) # Store the error message
+                    print(f"TASK_EVENT: [ScanRun {scan_run_id}] Task status changed to 'failed' due to error starting Nmap process", file=sys.stdout)
+                    sys.stdout.flush()
                     db.session.commit()
                 else:
-                    current_app.logger.error(f"[ScanRun {scan_run_id}] Scan run not found when trying to log Nmap process start error.")
+                    not_found_msg = f"[ScanRun {scan_run_id}] Scan run not found when trying to log Nmap process start error."
+                    current_app.logger.error(not_found_msg)
+                    print(f"ERROR: {not_found_msg}", file=sys.stdout)
+                    sys.stdout.flush()
             return {'status': 'failed', 'message': f'Error starting Nmap process: {str(e)}', 'scan_run_id': scan_run_id}
         
         # Variables to track process state and errors
@@ -231,6 +254,11 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
         quitting_detected = False
         last_error_line = ""
         output_buffer = []
+        
+        # Print some debug info about the process
+        print(f"TASK_DEBUG: [ScanRun {scan_run_id}] Monitoring nmap process with PID {process.pid}", file=sys.stdout)
+        print(f"TASK_DEBUG: [ScanRun {scan_run_id}] Command: {cmd}", file=sys.stdout)
+        sys.stdout.flush()
         
         # Monitor progress
         while process.poll() is None:
@@ -241,6 +269,11 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                 
             line = output.strip()
             current_app.logger.debug(f"[ScanRun {scan_run_id}] Nmap stdout: {line}")
+            
+            # Print significant nmap output to STDOUT for debugging
+            if any(x in line.lower() for x in ['starting', 'error', 'warning', 'quit', 'fail', 'done', '% complete', 'pid']):
+                print(f"NMAP_OUTPUT: [ScanRun {scan_run_id}] {line}", file=sys.stdout)
+                sys.stdout.flush()
             
             # Store recent output lines for context
             output_buffer.append(line)
@@ -277,16 +310,26 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                         break
                 
             if privilege_error:
-                current_app.logger.error(f"[ScanRun {scan_run_id}] DETECTED PRIVILEGE ERROR: Restarting scan with sudo...")
-                current_app.logger.error(f"[ScanRun {scan_run_id}] Error context: {last_error_line}")
+                error_msg = f"[ScanRun {scan_run_id}] DETECTED PRIVILEGE ERROR: Restarting scan with sudo..."
+                current_app.logger.error(error_msg)
+                print(f"ERROR: {error_msg}", file=sys.stdout)
+                
+                context_msg = f"[ScanRun {scan_run_id}] Error context: {last_error_line}"
+                current_app.logger.error(context_msg)
+                print(f"ERROR: {context_msg}", file=sys.stdout)
+                sys.stdout.flush()
                 
                 # Kill the current process
+                print(f"TASK_EVENT: [ScanRun {scan_run_id}] Terminating process with PID {process.pid} due to privilege error", file=sys.stdout)
                 process.terminate()
                 process.wait(timeout=5)
                 
                 # Restart with sudo (using NOPASSWD configuration)
                 cmd = f"sudo {nmap_path} -v {nmap_args} {target_string}"
-                current_app.logger.info(f"[ScanRun {scan_run_id}] Restarting with sudo (NOPASSWD): {cmd}")
+                restart_msg = f"[ScanRun {scan_run_id}] Restarting with sudo (NOPASSWD): {cmd}"
+                current_app.logger.info(restart_msg)
+                print(f"TASK_EVENT: {restart_msg}", file=sys.stdout)
+                sys.stdout.flush()
                 
                 try:
                     process = subprocess.Popen(
@@ -304,9 +347,15 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                             scan_run.nmap_pid = process.pid
                             # Ensure status is set to running in case it was changed
                             scan_run.status = 'running'
-                            current_app.logger.info(f"[ScanRun {scan_run_id}] (Sudo Restart) Attempting to commit new PID {process.pid} and status 'running'.")
+                            pid_update_msg = f"[ScanRun {scan_run_id}] (Sudo Restart) Attempting to commit new PID {process.pid} and status 'running'."
+                            current_app.logger.info(pid_update_msg)
+                            print(f"TASK_EVENT: {pid_update_msg}", file=sys.stdout)
+                            sys.stdout.flush()
                             db.session.commit()
-                            current_app.logger.info(f"[ScanRun {scan_run_id}] (Sudo Restart) Successfully committed new PID {process.pid} and status 'running'.")
+                            pid_success_msg = f"[ScanRun {scan_run_id}] (Sudo Restart) Successfully committed new PID {process.pid} and status 'running'."
+                            current_app.logger.info(pid_success_msg)
+                            print(f"TASK_EVENT: {pid_success_msg}", file=sys.stdout)
+                            sys.stdout.flush()
                     
                     # Reset error tracking for the new process
                     privilege_error_detected = False
@@ -341,31 +390,49 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
             
             # Check for scan completion
             if 'Nmap done' in line: 
-                current_app.logger.info(f"[ScanRun {scan_run_id}] Scan completed successfully!")
+                completion_msg = f"[ScanRun {scan_run_id}] Scan completed successfully!"
+                current_app.logger.info(completion_msg)
+                print(f"TASK_EVENT: {completion_msg}", file=sys.stdout)
+                sys.stdout.flush()
                 with current_app.app_context():
                     # Re-fetch the scan_run object within this context
                     current_scan_run = ScanRun.query.get(scan_run_id)
                     if current_scan_run:
                         current_scan_run.status = 'completed'
                         current_scan_run.completed_at = datetime.utcnow() # Also set completed_at
+                        status_update_msg = f"[ScanRun {scan_run_id}] Updated task status to 'completed' at {current_scan_run.completed_at.strftime('%Y-%m-%d %H:%M:%S')}"
+                        print(f"TASK_EVENT: {status_update_msg}", file=sys.stdout)
+                        sys.stdout.flush()
                         db.session.commit()
                     else:
-                        current_app.logger.error(f"[ScanRun {scan_run_id}] ScanRun object was not found in the database when trying to mark as 'completed'. It might have been deleted externally.")
+                        not_found_error = f"[ScanRun {scan_run_id}] ScanRun object was not found in the database when trying to mark as 'completed'. It might have been deleted externally."
+                        current_app.logger.error(not_found_error)
+                        print(f"ERROR: {not_found_error}", file=sys.stdout)
+                        sys.stdout.flush()
         
         # Process has completed
         return_code = process.poll()
+        print(f"TASK_EVENT: [ScanRun {scan_run_id}] Nmap process with PID {process.pid} exited with return code {return_code}", file=sys.stdout)
+        sys.stdout.flush()
         
         # Process tracking is now handled by the database PID and external cleanup scripts.
         
         # Check if there was any output at all
         if not output_buffer:
-            current_app.logger.error(f"[ScanRun {scan_run_id}] No output received from Nmap process")
+            no_output_error = f"[ScanRun {scan_run_id}] No output received from Nmap process"
+            current_app.logger.error(no_output_error)
+            print(f"ERROR: {no_output_error}", file=sys.stdout)
+            # Add PID debugging info to help track down missing PID issues
+            print(f"PID_DEBUG: [ScanRun {scan_run_id}] Last known PID: {process.pid}, Process returncode: {return_code}", file=sys.stdout)
+            sys.stdout.flush()
             with current_app.app_context():
                 scan_run = ScanRun.query.get(scan_run_id)
                 if scan_run:
                     scan_run.status = 'failed'
                     scan_run.error_message = 'No output received from Nmap process'
                     scan_run.completed_at = datetime.utcnow()
+                    print(f"TASK_EVENT: [ScanRun {scan_run_id}] Updated status to 'failed' due to no output from Nmap process", file=sys.stdout)
+                    sys.stdout.flush()
                     db.session.commit()
             return {'status': 'failed', 'message': 'No output received from Nmap process', 'scan_run_id': scan_run_id}
 
@@ -373,46 +440,70 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
         nmap_truly_done_in_output = any("Nmap done" in l for l in output_buffer)
 
         if return_code == 0 and nmap_truly_done_in_output:
-            current_app.logger.info(f"[ScanRun {scan_run_id}] Nmap process completed successfully (return_code 0, 'Nmap done' found). Attempting to create report.")
+            success_msg = f"[ScanRun {scan_run_id}] Nmap process completed successfully (return_code 0, 'Nmap done' found). Attempting to create report."
+            current_app.logger.info(success_msg)
+            print(f"TASK_EVENT: {success_msg}", file=sys.stdout)
+            sys.stdout.flush()
             
             # xml_output and normal_output are defined earlier in this function
             if not os.path.exists(xml_output):
-                current_app.logger.error(f"[ScanRun {scan_run_id}] XML output file {xml_output} not found after successful Nmap run.")
+                missing_file_msg = f"[ScanRun {scan_run_id}] XML output file {xml_output} not found after successful Nmap run."
+                current_app.logger.error(missing_file_msg)
+                print(f"ERROR: {missing_file_msg}", file=sys.stdout)
+                sys.stdout.flush()
                 with current_app.app_context():
                     scan_run = ScanRun.query.get(scan_run_id)
                     if scan_run:
                         scan_run.status = 'failed'
                         scan_run.error_message = f"Nmap completed but XML output file missing: {os.path.basename(xml_output)}"
                         scan_run.completed_at = datetime.utcnow()
+                        print(f"TASK_EVENT: [ScanRun {scan_run_id}] Updated status to 'failed' due to missing XML output file", file=sys.stdout)
+                        sys.stdout.flush()
                         db.session.commit()
             else:
                 # Call create_scan_report. 
+                print(f"TASK_EVENT: [ScanRun {scan_run_id}] Attempting to create scan report from output files", file=sys.stdout)
+                sys.stdout.flush()
                 new_report = create_scan_report(scan_run_id, xml_output, normal_output) # Removed current_app, as create_scan_report was refactored
                 
                 with current_app.app_context(): # Ensure app context for DB operations
                     scan_run = ScanRun.query.get(scan_run_id) # Re-fetch for current session
                     if scan_run:
                         if new_report:
-                            current_app.logger.info(f"[ScanRun {scan_run_id}] Report created successfully (Report ID: {new_report.id}).")
+                            report_success_msg = f"[ScanRun {scan_run_id}] Report created successfully (Report ID: {new_report.id})."
+                            current_app.logger.info(report_success_msg)
+                            print(f"TASK_EVENT: {report_success_msg}", file=sys.stdout)
                             scan_run.status = 'completed'
                             scan_run.report = new_report # Link the report object
                             scan_run.error_message = None # Clear any previous error
                             scan_run.completed_at = datetime.utcnow()
+                            print(f"TASK_EVENT: [ScanRun {scan_run_id}] Task completed successfully at {scan_run.completed_at.strftime('%Y-%m-%d %H:%M:%S')}", file=sys.stdout)
+                            sys.stdout.flush()
                             db.session.commit()
                             return {'status': 'completed', 'scan_run_id': scan_run_id, 'report_id': new_report.id}
                         else:
-                            current_app.logger.error(f"[ScanRun {scan_run_id}] Failed to create report from Nmap output.")
+                            report_fail_msg = f"[ScanRun {scan_run_id}] Failed to create report from Nmap output."
+                            current_app.logger.error(report_fail_msg)
+                            print(f"ERROR: {report_fail_msg}", file=sys.stdout)
                             scan_run.status = 'failed'
                             scan_run.error_message = "Report creation failed after Nmap scan."
                             scan_run.completed_at = datetime.utcnow()
+                            print(f"TASK_EVENT: [ScanRun {scan_run_id}] Task failed due to report creation error", file=sys.stdout)
+                            sys.stdout.flush()
                             db.session.commit()
                             return {'status': 'failed', 'message': "Report creation failed after Nmap scan.", 'scan_run_id': scan_run_id}
                     else:
-                        current_app.logger.error(f"[ScanRun {scan_run_id}] ScanRun object not found when trying to finalize after report creation attempt.")
+                        not_found_error = f"[ScanRun {scan_run_id}] ScanRun object not found when trying to finalize after report creation attempt."
+                        current_app.logger.error(not_found_error)
+                        print(f"ERROR: {not_found_error}", file=sys.stdout)
+                        sys.stdout.flush()
                         return {'status': 'failed', 'message': "ScanRun object not found when trying to finalize after report creation attempt.", 'scan_run_id': scan_run_id}
 
         elif return_code != 0:
-            current_app.logger.error(f"[ScanRun {scan_run_id}] Nmap process exited with non-zero return code: {return_code}.")
+            error_msg = f"[ScanRun {scan_run_id}] Nmap process exited with non-zero return code: {return_code}."
+            current_app.logger.error(error_msg)
+            print(f"ERROR: {error_msg}", file=sys.stdout)
+            sys.stdout.flush()
             detailed_error_message = f"Nmap process failed with return code {return_code}."
             
             # Try to find a more specific error message from output_buffer
@@ -437,30 +528,55 @@ def run_nmap_scan(scan_run_id, scan_task_id_for_lock):
                     scan_run.status = 'failed'
                     scan_run.error_message = str(detailed_error_message)[:1023] # Ensure fits in DB
                     scan_run.completed_at = datetime.utcnow()
+                    print(f"TASK_EVENT: [ScanRun {scan_run_id}] Task failed with non-zero exit code - updating error message", file=sys.stdout)
+                    sys.stdout.flush()
                     db.session.commit()
                 else:
-                    current_app.logger.error(f"[ScanRun {scan_run_id}] ScanRun object not found when handling Nmap process failure (return_code {return_code}).")
+                    not_found_msg = f"[ScanRun {scan_run_id}] ScanRun object not found when handling Nmap process failure (return_code {return_code})."
+                    current_app.logger.error(not_found_msg)
+                    print(f"ERROR: {not_found_msg}", file=sys.stdout)
+                    sys.stdout.flush()
 
         else: # return_code == 0 but not nmap_truly_done_in_output
-            current_app.logger.warning(f"[ScanRun {scan_run_id}] Nmap process finished with return_code 0, but 'Nmap done' was not found in output. Scan may be incomplete or output corrupted.")
+            incomplete_msg = f"[ScanRun {scan_run_id}] Nmap process finished with return_code 0, but 'Nmap done' was not found in output. Scan may be incomplete or output corrupted."
+            current_app.logger.warning(incomplete_msg)
+            print(f"WARNING: {incomplete_msg}", file=sys.stdout)
+            sys.stdout.flush()
             with current_app.app_context():
                 scan_run = ScanRun.query.get(scan_run_id)
                 if scan_run:
                     scan_run.status = 'failed'
                     scan_run.error_message = "Nmap finished (code 0) but output indicates incompletion or error (no 'Nmap done' marker)."
                     scan_run.completed_at = datetime.utcnow()
+                    print(f"TASK_EVENT: [ScanRun {scan_run_id}] Task marked as failed due to incomplete output", file=sys.stdout)
+                    sys.stdout.flush()
                     db.session.commit()
                 else:
-                    current_app.logger.error(f"[ScanRun {scan_run_id}] ScanRun object not found when handling incomplete Nmap scan (code 0, no 'Nmap done').")
+                    not_found_msg = f"[ScanRun {scan_run_id}] ScanRun object not found when handling incomplete Nmap scan (code 0, no 'Nmap done')."
+                    current_app.logger.error(not_found_msg)
+                    print(f"ERROR: {not_found_msg}", file=sys.stdout)
+                    sys.stdout.flush()
             return {'status': 'failed', 'message': "Nmap finished (code 0) but output indicates incompletion or error (no 'Nmap done' marker).", 'scan_run_id': scan_run_id}
     except Exception as e:
-        current_app.logger.error(f"[ScanRun {scan_run_id}] Unhandled exception in run_nmap_scan: {str(e)}", exc_info=True)
+        unhandled_error = f"[ScanRun {scan_run_id}] Unhandled exception in run_nmap_scan: {str(e)}"
+        current_app.logger.error(unhandled_error, exc_info=True)
+        print(f"CRITICAL ERROR: {unhandled_error}", file=sys.stdout)
+        # Print stack trace to STDOUT for debugging
+        import traceback
+        print(f"EXCEPTION TRACE: [ScanRun {scan_run_id}]\n{traceback.format_exc()}", file=sys.stdout)
+        sys.stdout.flush()
         with current_app.app_context():
             scan_run = ScanRun.query.get(scan_run_id)
             if scan_run:
                 scan_run.status = 'failed'
+                scan_run.error_message = str(e)  # Store the exception message
                 scan_run.completed_at = datetime.utcnow()
+                print(f"TASK_EVENT: [ScanRun {scan_run_id}] Task failed due to unhandled exception", file=sys.stdout)
+                sys.stdout.flush()
                 db.session.commit()
+            else:
+                print(f"ERROR: [ScanRun {scan_run_id}] Could not update scan run status - object not found", file=sys.stdout)
+                sys.stdout.flush()
         return {'status': 'failed', 'message': str(e), 'scan_run_id': scan_run_id}
 
 def create_scan_report(scan_run_id, xml_path, normal_path):
@@ -468,6 +584,8 @@ def create_scan_report(scan_run_id, xml_path, normal_path):
     Parse Nmap XML output and create a report in the database
     Also enforces the maximum reports per task setting by deleting older reports
     """
+    print(f"TASK_EVENT: [ScanRun {scan_run_id}] Starting to create scan report from {xml_path}", file=sys.stdout)
+    sys.stdout.flush()
     parsed_summary = {}
     parsed_hosts_data = []
 
