@@ -84,7 +84,6 @@ def create_app(config_class=Config, instance_path=None):
         # A more robust approach using PID-based locking
         import tempfile
         import fcntl
-        import time
         import random
         
         # Use an absolute path for the lock file to ensure consistency across workers

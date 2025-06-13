@@ -2,6 +2,7 @@ import multiprocessing
 import logging
 import atexit
 import sys
+import os
 from functools import partial
 from datetime import datetime
 import pytz # For timezone-aware ended_at, if used
