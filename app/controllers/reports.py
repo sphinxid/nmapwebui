@@ -1,24 +1,19 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, send_file, make_response
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, send_file
 from flask_login import login_required, current_user
-from app import db
 from app.models.task import ScanRun, ScanTask
 from app.models.report import ScanReport, HostFinding, PortFinding
 from app.models.settings import SystemSettings
 import os
 import json
-import tempfile
 from io import BytesIO
-
-# Try to import WeasyPrint, but provide a fallback if it's not available
 try:
+    import weasyprint
     from weasyprint import HTML, CSS
     WEASYPRINT_AVAILABLE = True
-except (ImportError, OSError):
+except ImportError:
     WEASYPRINT_AVAILABLE = False
-    print("WeasyPrint is not available. PDF export functionality will be disabled.")
-    print("To enable PDF export, install the required system dependencies:")
-    print("  For Ubuntu/Debian: sudo apt-get install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libpangocairo-1.0-0")
-    print("  For more information, see: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#installation")
+    HTML = None  # To prevent NameError if not available
+    CSS = None   # To prevent NameError if not available
 
 reports_bp = Blueprint('reports', __name__, url_prefix='/reports')
 
@@ -210,10 +205,6 @@ def api_summary(run_id):
 @reports_bp.route('/<int:run_id>/pdf')
 @login_required
 def report_pdf(run_id):
-    if not WEASYPRINT_AVAILABLE:
-        flash('PDF export is not available. Please install the required system dependencies.', 'warning')
-        return redirect(url_for('reports.view', run_id=run_id))
-        
     # Get the scan run and ensure it belongs to the current user
     scan_run = ScanRun.query.join(ScanRun.task).filter(
         ScanRun.id == run_id,
@@ -262,10 +253,20 @@ def report_pdf(run_id):
         host_data=host_data
     )
     
-    # Create a PDF from the HTML content
-    pdf_file = BytesIO()
-    HTML(string=html_content).write_pdf(pdf_file)
-    pdf_file.seek(0)
+    if not WEASYPRINT_AVAILABLE:
+        flash('PDF export is not available. Please install WeasyPrint and its dependencies (e.g., libpango).', 'warning')
+        return redirect(url_for('reports.view', run_id=run_id))
+
+    try:
+        pdf_file = BytesIO()
+        # You can add base_url=request.url_root if you have relative paths for CSS/images in your HTML
+        HTML(string=html_content).write_pdf(pdf_file)
+        pdf_file.seek(0)
+    except Exception as e:
+        # Consider using app.logger.error() for more detailed logging
+        print(f"DEBUG: Error generating PDF with WeasyPrint: {e}") 
+        flash(f'Error creating PDF: {str(e)}', 'danger')
+        return redirect(url_for('reports.view', run_id=run_id))
     
     # Create a response with the PDF
     # Sanitize task name for the filename (replace spaces with underscores and remove special characters)
@@ -326,6 +327,10 @@ def host_pdf(run_id, host_id):
     
     # Generate PDF from HTML
     pdf_file = BytesIO()
+    if WEASYPRINT_AVAILABLE:
+        import pydyf
+        print(f"DEBUG: WeasyPrint version: {weasyprint.__version__}, location: {weasyprint.__file__}")
+        print(f"DEBUG: pydyf version: {pydyf.__version__}, location: {pydyf.__file__}")
     HTML(string=html_content).write_pdf(pdf_file)
     pdf_file.seek(0)
     

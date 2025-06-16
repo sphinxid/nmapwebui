@@ -33,6 +33,13 @@
                         <div class="form-text">
                             {{ form.max_concurrent_tasks.description }}
                         </div>
+                        <div class="form-text text-info mt-1">
+                            <small>
+                                <i class="bi bi-info-circle-fill"></i> 
+                                The Nmap worker pool size is currently configured to <strong>{{ nmap_worker_pool_size }}</strong> (via <code>NMAP_WORKER_POOL_SIZE</code> environment variable).
+                                The effective maximum number of concurrent scans will be the lower of this value and the value set above.
+                            </small>
+                        </div>
                     </div>
                     
                     <div class="mb-3">

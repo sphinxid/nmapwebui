@@ -1,0 +1,98 @@
+{% macro render_field(field, label_visible=true) -%}
+  <div class="form-group {% if field.errors %}has-error{% endif %} {{ kwargs.pop('class_', '') }}">
+    {% if label_visible %}
+      {{ field.label(class="form-label") }}
+    {% endif %}
+    {{ field(class_="form-control " + kwargs.pop('class_', ''), **kwargs) }}
+    {% if field.errors %}
+      <ul class="list-unstyled text-danger mt-1">
+      {% for error in field.errors %}
+        <li><small>{{ error }}</small></li>
+      {% endfor %}
+      </ul>
+    {% endif %}
+    {% if field.description %}
+        <small class="form-text text-muted">{{ field.description }}</small>
+    {% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro render_checkbox_field(field, label_visible=true) -%}
+  <div class="form-check {{ kwargs.pop('class_', '') }}">
+    {{ field(class_="form-check-input " + kwargs.pop('class_', ''), **kwargs) }}
+    {% if label_visible %}
+      {{ field.label(class="form-check-label") }}
+    {% endif %}
+    {% if field.errors %}
+      <ul class="list-unstyled text-danger mt-1">
+      {% for error in field.errors %}
+        <li><small>{{ error }}</small></li>
+      {% endfor %}
+      </ul>
+    {% endif %}
+    {% if field.description %}
+        <small class="form-text text-muted">{{ field.description }}</small>
+    {% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro render_radio_field(field, label_visible=true) %}
+    {% for value, label, checked in field.iter_choices() %}
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="{{ field.id }}" id="{{ field.id }}-{{ value }}" value="{{ value }}" {% if checked %}checked{% endif %}>
+            <label class="form-check-label" for="{{ field.id }}-{{ value }}">{{ label }}</label>
+        </div>
+    {% endfor %}
+    {% if field.errors %}
+      <ul class="list-unstyled text-danger mt-1">
+      {% for error in field.errors %}
+        <li><small>{{ error }}</small></li>
+      {% endfor %}
+      </ul>
+    {% endif %}
+    {% if field.description %}
+        <small class="form-text text-muted">{{ field.description }}</small>
+    {% endif %}
+{% endmacro %}
+
+{% macro render_submit_field(field, class_="btn btn-primary") -%}
+  {{ field(class=class_, **kwargs) }}
+{%- endmacro %}
+
+{% macro render_textarea_field(field, label_visible=true, rows=3) -%}
+  <div class="form-group {% if field.errors %}has-error{% endif %} {{ kwargs.pop('class_', '') }}">
+    {% if label_visible %}
+      {{ field.label(class="form-label") }}
+    {% endif %}
+    {{ field(class_="form-control " + kwargs.pop('class_', ''), rows=rows, **kwargs) }}
+    {% if field.errors %}
+      <ul class="list-unstyled text-danger mt-1">
+      {% for error in field.errors %}
+        <li><small>{{ error }}</small></li>
+      {% endfor %}
+      </ul>
+    {% endif %}
+    {% if field.description %}
+        <small class="form-text text-muted">{{ field.description }}</small>
+    {% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro render_select_field(field, label_visible=true) -%}
+  <div class="form-group {% if field.errors %}has-error{% endif %} {{ kwargs.pop('class_', '') }}">
+    {% if label_visible %}
+      {{ field.label(class="form-label") }}
+    {% endif %}
+    {{ field(class_="form-select " + kwargs.pop('class_', ''), **kwargs) }}
+    {% if field.errors %}
+      <ul class="list-unstyled text-danger mt-1">
+      {% for error in field.errors %}
+        <li><small>{{ error }}</small></li>
+      {% endfor %}
+      </ul>
+    {% endif %}
+    {% if field.description %}
+        <small class="form-text text-muted">{{ field.description }}</small>
+    {% endif %}
+  </div>
+{%- endmacro %}

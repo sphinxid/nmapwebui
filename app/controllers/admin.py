@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app
+from config import Config # Import Config
 from flask_login import login_required, current_user
 from app import db
 from app.models.user import User
@@ -202,6 +203,8 @@ def system_settings():
         flash('System settings updated successfully!', 'success')
         return redirect(url_for('admin.system_settings'))
     
+    nmap_worker_pool_size = Config.NMAP_WORKER_POOL_SIZE
     return render_template('admin/settings.html', 
                           title='System Settings',
-                          form=form)
+                          form=form,
+                          nmap_worker_pool_size=nmap_worker_pool_size)
