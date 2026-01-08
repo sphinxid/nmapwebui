@@ -5,10 +5,16 @@ FROM python:3.9-slim-bookworm
 ENV PYTHONUNBUFFERED=1
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends nmap libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libpangocairo-1.0-0 sudo supervisor
-
-# Clean up apt cache
-RUN rm -rf /var/lib/apt/lists/*
+# For best practices see: https://docs.docker.com/build/building/best-practices/#apt-get
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libharfbuzz0b \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libpangoft2-1.0-0 \
+    nmap \
+    sudo \
+    supervisor \
+    rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user and group
 RUN groupadd -r appgroup &&     useradd -r -g appgroup -d /home/appuser -s /bin/bash -m appuser &&     chown -R appuser:appgroup /home/appuser
