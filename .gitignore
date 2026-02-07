@@ -1,0 +1,13 @@
+.env
+.idea
+.python-version
+CLAUDE.md
+__pycache__/
+app/__pycache__/
+app/controllers/__pycache__/
+app/models/__pycache__/
+app/tasks/__pycache__/
+app/utils/__pycache__/
+app/utils/cron_utils.py
+instance/
+migrations/

@@ -148,17 +148,19 @@ class ScheduleForm(FlaskForm):
         ('daily', 'Daily'),
         ('weekly', 'Weekly'),
         ('monthly', 'Monthly'),
-        ('interval', 'Interval (Hours)')
+        ('interval', 'Interval (Hours)'),
+        ('one-time', 'One-Time'),
+        ('cron', 'Cron Expression (Advanced)')
     ], validators=[DataRequired()])
-    
+
     # Display current timezone
     current_timezone = StringField('Current Timezone', render_kw={'readonly': True})
-    
+
     # Daily, Weekly, Monthly fields
     hour = IntegerField('Hour (0-23)', validators=[NumberRange(min=0, max=23)], default=0)
     minute = IntegerField('Minute (0-59)', validators=[NumberRange(min=0, max=59)], default=0)
-    
-    # Weekly fields
+
+    # Weekly fields - single day (kept for backward compatibility)
     day_of_week = SelectField('Day of Week', choices=[
         (0, 'Monday'),
         (1, 'Tuesday'),
@@ -168,14 +170,70 @@ class ScheduleForm(FlaskForm):
         (5, 'Saturday'),
         (6, 'Sunday')
     ], coerce=int, default=0)
-    
+
+    # Weekly fields - multiple days (new)
+    days_of_week = SelectMultipleField('Days of Week',
+        choices=[
+            ('0', 'Monday'),
+            ('1', 'Tuesday'),
+            ('2', 'Wednesday'),
+            ('3', 'Thursday'),
+            ('4', 'Friday'),
+            ('5', 'Saturday'),
+            ('6', 'Sunday')
+        ],
+        coerce=str,
+        default=[])
+
     # Monthly fields
     day = IntegerField('Day of Month (1-31)', validators=[NumberRange(min=1, max=31)], default=1)
-    
+
     # Interval fields
     hours = IntegerField('Hours', validators=[NumberRange(min=1)], default=24)
-    
+
+    # One-time schedule fields
+    run_date = StringField('Run Date', validators=[Optional()])
+    run_time_hour = IntegerField('Hour (0-23)', validators=[Optional(), NumberRange(min=0, max=23)])
+    run_time_minute = IntegerField('Minute (0-59)', validators=[Optional(), NumberRange(min=0, max=59)])
+
+    # Cron expression fields
+    cron_expression = StringField('Cron Expression', validators=[Optional()])
+    cron_description = StringField('Description (Optional)', validators=[Optional(), Length(max=255)])
+
     submit = SubmitField('Schedule')
+
+    def validate_cron_expression(self, cron_expression):
+        """Custom validator for cron expressions"""
+        if self.schedule_type.data == 'cron':
+            if not cron_expression.data:
+                raise ValidationError('Cron expression is required')
+            from app.utils.cron_utils import validate_cron_expression as validate_cron
+            is_valid, error = validate_cron(cron_expression.data)
+            if not is_valid:
+                raise ValidationError(f'Invalid cron expression: {error}')
+
+    def validate_run_date(self, run_date):
+        """Custom validator for one-time schedule date"""
+        if self.schedule_type.data == 'one-time':
+            if not run_date.data:
+                raise ValidationError('Run date is required for one-time schedules')
+            # Validate date format (YYYY-MM-DD)
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(run_date.data, '%Y-%m-%d')
+                # Check if date is in the future (with some tolerance)
+                today = datetime.now().date()
+                if date_obj.date() < today:
+                    raise ValidationError('Run date must be today or in the future')
+            except ValueError:
+                raise ValidationError('Invalid date format. Expected YYYY-MM-DD')
+
+    def validate_days_of_week(self, days_of_week):
+        """Custom validator for multi-day weekly schedules"""
+        # Only validate on form submission (when form is being validated)
+        if self.schedule_type.data == 'weekly' and self.is_submitted():
+            if not days_of_week.data or len(days_of_week.data) == 0:
+                raise ValidationError('Please select at least one day for weekly schedule')
     
 
 class SystemSettingsForm(FlaskForm):

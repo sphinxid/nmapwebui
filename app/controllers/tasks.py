@@ -391,15 +391,35 @@ def schedule(id):
             form.hour.data = schedule_data.get('hour', 0)
             form.minute.data = schedule_data.get('minute', 0)
         elif scan_task.schedule_type == 'weekly':
-            form.day_of_week.data = schedule_data.get('day_of_week', 0)
             form.hour.data = schedule_data.get('hour', 0)
             form.minute.data = schedule_data.get('minute', 0)
+            # Check for multi-day format first
+            if 'days' in schedule_data:
+                form.days_of_week.data = [str(d) for d in schedule_data.get('days', [])]
+            else:
+                # Backward compatible single day format
+                form.day_of_week.data = schedule_data.get('day_of_week', 0)
         elif scan_task.schedule_type == 'monthly':
             form.day.data = schedule_data.get('day', 1)
             form.hour.data = schedule_data.get('hour', 0)
             form.minute.data = schedule_data.get('minute', 0)
         elif scan_task.schedule_type == 'interval':
             form.hours.data = schedule_data.get('hours', 24)
+        elif scan_task.schedule_type == 'one-time':
+            run_datetime_str = schedule_data.get('run_datetime_str', '')
+            if run_datetime_str:
+                # Parse datetime string to pre-populate fields
+                try:
+                    from datetime import datetime as dt
+                    run_dt = dt.strptime(run_datetime_str, '%Y-%m-%d %H:%M:%S')
+                    form.run_date.data = run_dt.strftime('%Y-%m-%d')
+                    form.run_time_hour.data = run_dt.hour
+                    form.run_time_minute.data = run_dt.minute
+                except Exception:
+                    pass
+        elif scan_task.schedule_type == 'cron':
+            form.cron_expression.data = schedule_data.get('cron_expression', '')
+            form.cron_description.data = schedule_data.get('description', '')
 
     if form.validate_on_submit():
         schedule_type = form.schedule_type.data
@@ -413,11 +433,19 @@ def schedule(id):
                 'minute': form.minute.data
             }
         elif schedule_type == 'weekly':
-            schedule_data = {
-                'day_of_week': form.day_of_week.data,
-                'hour': form.hour.data,
-                'minute': form.minute.data
-            }
+            # Handle multi-day selection (new format)
+            days_of_week = form.days_of_week.data  # List of strings
+            if days_of_week and len(days_of_week) > 0:
+                schedule_data = {
+                    'days': [int(d) for d in days_of_week],
+                    'hour': form.hour.data,
+                    'minute': form.minute.data
+                }
+            else:
+                # No days selected - this should have been caught by validation
+                flash('Please select at least one day for weekly schedule', 'danger')
+                return render_template('tasks/schedule.html', form=form, scan_task=scan_task,
+                                     title=f'Schedule Task: {scan_task.name}')
         elif schedule_type == 'monthly':
             schedule_data = {
                 'day': form.day.data,
@@ -427,6 +455,17 @@ def schedule(id):
         elif schedule_type == 'interval':
             schedule_data = {
                 'hours': form.hours.data
+            }
+        elif schedule_type == 'one-time':
+            # Build datetime string from date and time inputs
+            run_datetime_str = f"{form.run_date.data} {form.run_time_hour.data:02d}:{form.run_time_minute.data:02d}:00"
+            schedule_data = {
+                'run_datetime_str': run_datetime_str
+            }
+        elif schedule_type == 'cron':
+            schedule_data = {
+                'cron_expression': form.cron_expression.data,
+                'description': form.cron_description.data or ''
             }
 
         # Update task with schedule information
@@ -484,6 +523,29 @@ def api_status(run_id):
         'started_at': scan_run.started_at.isoformat() if scan_run.started_at else None,
         'completed_at': scan_run.completed_at.isoformat() if scan_run.completed_at else None
     })
+
+@tasks_bp.route('/api/cron-preview', methods=['POST'])
+@login_required
+def api_cron_preview():
+    """Preview next execution times for a cron expression"""
+    from app.utils.cron_utils import validate_cron_expression, get_next_run_times
+    from app.models.user import User
+
+    cron_expr = request.json.get('cron_expression', '')
+
+    # Get user's timezone
+    user = User.query.get(current_user.id)
+    user_timezone = user.timezone if user else 'UTC'
+
+    # Validate the cron expression
+    is_valid, error = validate_cron_expression(cron_expr)
+    if not is_valid:
+        return jsonify({'error': error}), 400
+
+    # Get next run times
+    next_runs = get_next_run_times(cron_expr, count=5, timezone=user_timezone)
+
+    return jsonify({'next_runs': next_runs})
 
 @tasks_bp.route('/<int:run_id>/kill', methods=['POST'])
 @login_required

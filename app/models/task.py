@@ -63,10 +63,30 @@ class ScanTask(db.Model):
             hour = schedule_data.get('hour', 0)
             minute = schedule_data.get('minute', 0)
             time_str = f"{int(hour):02d}:{int(minute):02d}"
-            day_of_week = schedule_data.get('day_of_week', 0)  # 0 = Monday in most systems
-            days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-            day_name = days[int(day_of_week) % 7]  # Ensure it's within range
-            return f"Weekly on {day_name} at {time_str}"
+            days_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+            # Check for multi-day format first (new format)
+            if 'days' in schedule_data:
+                days_list = schedule_data.get('days', [])
+                if days_list:
+                    # Convert day indices to names
+                    selected_days = [days_names[int(d) % 7] for d in days_list]
+                    # Format nicely
+                    if len(selected_days) == 1:
+                        return f"Weekly on {selected_days[0]} at {time_str}"
+                    elif len(selected_days) == 7:
+                        return f"Daily at {time_str}"  # All days selected
+                    else:
+                        # Shorten day names for multi-day display
+                        short_days = [d[:3] for d in selected_days]
+                        return f"Weekly on {', '.join(short_days)} at {time_str}"
+                else:
+                    return f"Weekly (no days selected) at {time_str}"
+            else:
+                # Backward compatible single day format (old format)
+                day_of_week = schedule_data.get('day_of_week', 0)
+                day_name = days_names[int(day_of_week) % 7]
+                return f"Weekly on {day_name} at {time_str}"
             
         elif self.schedule_type == 'monthly':
             hour = schedule_data.get('hour', 0)
@@ -84,7 +104,53 @@ class ScanTask(db.Model):
             else:
                 suffix = 'th'
             return f"Monthly on the {day_of_month}{suffix} at {time_str}"
-            
+
+        elif self.schedule_type == 'interval':
+            hours = schedule_data.get('hours', 24)
+            if hours == 1:
+                return "Every hour"
+            elif hours < 24:
+                return f"Every {hours} hours"
+            else:
+                days = hours / 24
+                if days == int(days):
+                    return f"Every {int(days)} day(s)"
+                else:
+                    return f"Every {hours} hours"
+
+        elif self.schedule_type == 'one-time':
+            run_datetime_str = schedule_data.get('run_datetime_str', '')
+            if run_datetime_str:
+                # Parse and format the datetime string
+                try:
+                    from datetime import datetime as dt
+                    run_dt = dt.strptime(run_datetime_str, '%Y-%m-%d %H:%M:%S')
+                    return f"Once on {run_dt.strftime('%Y-%m-%d at %H:%M')}"
+                except Exception:
+                    return f"Once at {run_datetime_str}"
+            else:
+                return "One-time schedule"
+
+        elif self.schedule_type == 'cron':
+            cron_expression = schedule_data.get('cron_expression', '')
+            description = schedule_data.get('description', '')
+
+            if description:
+                return f"Cron: {cron_expression} ({description})"
+            elif cron_expression:
+                # Try to make it more readable using the cron_utils
+                try:
+                    from app.utils.cron_utils import cron_to_human_readable
+                    human_readable = cron_to_human_readable(cron_expression)
+                    if human_readable != cron_expression:
+                        return f"Cron: {cron_expression} ({human_readable})"
+                    else:
+                        return f"Cron: {cron_expression}"
+                except Exception:
+                    return f"Cron: {cron_expression}"
+            else:
+                return "Cron schedule (not configured)"
+
         else:
             # For any custom or unknown schedule types
             return f"{self.schedule_type.capitalize()} schedule"

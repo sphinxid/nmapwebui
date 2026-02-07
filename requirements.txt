@@ -12,6 +12,7 @@ email-validator==2.0.0
 python-nmap==0.7.1
 gunicorn==21.2.0
 psutil==7.0.0
+croniter==2.0.1
 
 # PDF Export functionality
 # Requires system dependencies: libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libpangocairo-1.0-0

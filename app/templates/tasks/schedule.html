@@ -65,21 +65,33 @@
                     <!-- Weekly Schedule Options -->
                     <div id="weeklyOptions" class="schedule-options" style="display: none;">
                         <div class="row mb-3">
-                            <div class="col-md-4">
-                                {{ form.day_of_week.label(class="form-label") }}
-                                {{ form.day_of_week(class="form-select") }}
-                                {% for error in form.day_of_week.errors %}
+                            <div class="col-md-12">
+                                <label class="form-label">Select Days *</label>
+                                <div class="btn-group" role="group" aria-label="Days of week">
+                                    {% for value, label in form.days_of_week.choices %}
+                                    <input type="checkbox" class="btn-check" name="days_of_week"
+                                           value="{{ value }}" id="day-{{ value }}"
+                                           {% if form.days_of_week.data and value in form.days_of_week.data %}checked{% endif %}>
+                                    <label class="btn btn-outline-primary" for="day-{{ value }}">
+                                        {{ label[:3] }}
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                                <small class="form-text text-muted d-block mt-1">Select one or more days of the week</small>
+                                {% for error in form.days_of_week.errors %}
                                     <div class="text-danger">{{ error }}</div>
                                 {% endfor %}
                             </div>
-                            <div class="col-md-3">
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
                                 {{ form.hour.label(class="form-label") }}
                                 {{ form.hour(class="form-control") }}
                                 {% for error in form.hour.errors %}
                                     <div class="text-danger">{{ error }}</div>
                                 {% endfor %}
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-6">
                                 {{ form.minute.label(class="form-label") }}
                                 {{ form.minute(class="form-control") }}
                                 {% for error in form.minute.errors %}
@@ -128,7 +140,88 @@
                             </div>
                         </div>
                     </div>
-                    
+
+                    <!-- One-Time Schedule Options -->
+                    <div id="oneTimeOptions" class="schedule-options" style="display: none;">
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> This task will run once at the specified date and time, then automatically unschedule.
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                {{ form.run_date.label(class="form-label") }}
+                                {{ form.run_date(class="form-control", type="date") }}
+                                {% for error in form.run_date.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="col-md-3">
+                                {{ form.run_time_hour.label(class="form-label") }}
+                                {{ form.run_time_hour(class="form-control", placeholder="14") }}
+                                {% for error in form.run_time_hour.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="col-md-3">
+                                {{ form.run_time_minute.label(class="form-label") }}
+                                {{ form.run_time_minute(class="form-control", placeholder="30") }}
+                                {% for error in form.run_time_minute.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <p class="text-muted small">
+                                    <strong>Your timezone:</strong> {{ timezone_display }}<br>
+                                    The task will run at the specified time in your local timezone.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cron Expression Options -->
+                    <div id="cronOptions" class="schedule-options" style="display: none;">
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> <strong>Advanced Feature:</strong> Cron expressions use UTC timezone. Make sure to account for timezone differences.
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                {{ form.cron_expression.label(class="form-label") }}
+                                {{ form.cron_expression(class="form-control", placeholder="0 14 * * 1,3,5") }}
+                                <small class="form-text text-muted">
+                                    <strong>Examples:</strong><br>
+                                    <code>0 14 * * *</code> - Daily at 2 PM (UTC)<br>
+                                    <code>0 9 * * 1-5</code> - Weekdays at 9 AM (UTC)<br>
+                                    <code>*/30 * * * *</code> - Every 30 minutes<br>
+                                    <a href="https://crontab.guru/" target="_blank" rel="noopener">Learn cron syntax <i class="bi bi-box-arrow-up-right"></i></a>
+                                </small>
+                                {% for error in form.cron_expression.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">&nbsp;</label>
+                                <button type="button" class="btn btn-info w-100" id="previewCronBtn">
+                                    <i class="bi bi-clock-history"></i> Preview Next Runs
+                                </button>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                {{ form.cron_description.label(class="form-label") }}
+                                {{ form.cron_description(class="form-control", placeholder="e.g., Every Monday, Wednesday, Friday at 2 PM UTC") }}
+                                <small class="form-text text-muted">Optional: Add a human-readable description</small>
+                                {% for error in form.cron_description.errors %}
+                                    <div class="text-danger">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div id="cronPreview" style="display: none; background-color: #fff3cd; border: 2px solid #856404; border-radius: 4px; padding: 15px; margin-top: 15px;">
+                            <strong>Next scheduled runs:</strong>
+                            <div id="cronPreviewList" style="margin-top: 10px; padding-left: 20px;"></div>
+                        </div>
+                    </div>
+
                     <div class="row">
                         <div class="col-md-12">
                             <a href="{{ url_for('tasks.view', id=scan_task.id) }}" class="btn btn-secondary">Cancel</a>
@@ -179,7 +272,9 @@
         const weeklyOptions = document.getElementById('weeklyOptions');
         const monthlyOptions = document.getElementById('monthlyOptions');
         const intervalOptions = document.getElementById('intervalOptions');
-        
+        const oneTimeOptions = document.getElementById('oneTimeOptions');
+        const cronOptions = document.getElementById('cronOptions');
+
         // Show/hide schedule options based on schedule type selection
         function toggleScheduleOptions() {
             // Hide all options first
@@ -187,7 +282,9 @@
             weeklyOptions.style.display = 'none';
             monthlyOptions.style.display = 'none';
             intervalOptions.style.display = 'none';
-            
+            oneTimeOptions.style.display = 'none';
+            cronOptions.style.display = 'none';
+
             // Show options based on selected schedule type
             if (scheduleTypeSelect.value === 'daily') {
                 dailyOptions.style.display = 'block';
@@ -197,13 +294,121 @@
                 monthlyOptions.style.display = 'block';
             } else if (scheduleTypeSelect.value === 'interval') {
                 intervalOptions.style.display = 'block';
+            } else if (scheduleTypeSelect.value === 'one-time') {
+                oneTimeOptions.style.display = 'block';
+            } else if (scheduleTypeSelect.value === 'cron') {
+                cronOptions.style.display = 'block';
             }
         }
-        
+
         scheduleTypeSelect.addEventListener('change', toggleScheduleOptions);
-        
+
         // Initial check
         toggleScheduleOptions();
+
+        // Debug: Check if cron elements exist on page load
+        console.log('=== Page Load Debug ===');
+        console.log('cronOptions div:', document.getElementById('cronOptions'));
+        console.log('cronPreview div:', document.getElementById('cronPreview'));
+        console.log('cronPreviewList ul:', document.getElementById('cronPreviewList'));
+        console.log('previewCronBtn:', document.getElementById('previewCronBtn'));
+
+        // Cron preview functionality
+        // Cache element references at page load time
+        const previewCronBtn = document.getElementById('previewCronBtn');
+        const cronPreviewDiv = document.getElementById('cronPreview');
+        const cronPreviewList = document.getElementById('cronPreviewList');
+
+        console.log('Preview button found:', previewCronBtn);
+        console.log('Cached preview div:', cronPreviewDiv);
+        console.log('Cached preview list:', cronPreviewList);
+
+        if (previewCronBtn) {
+            previewCronBtn.addEventListener('click', async function(e) {
+                e.preventDefault(); // Prevent any default button behavior
+                console.log('Preview button clicked');
+
+                // Use cached references instead of looking up again
+                console.log('Using cached preview div:', cronPreviewDiv);
+                console.log('Using cached preview list:', cronPreviewList);
+
+                const cronExprInput = document.querySelector('[name="cron_expression"]');
+                if (!cronExprInput) {
+                    console.error('Cron expression input not found');
+                    alert('Error: Could not find cron expression input field');
+                    return;
+                }
+
+                const cronExpr = cronExprInput.value.trim();
+                console.log('Cron expression:', cronExpr);
+
+                if (!cronExpr) {
+                    alert('Please enter a cron expression first');
+                    return;
+                }
+
+                if (!cronPreviewDiv || !cronPreviewList) {
+                    console.error('Cached preview elements are null');
+                    console.error('All elements with id containing "cron":',
+                        Array.from(document.querySelectorAll('[id*="cron"]')).map(el => el.id));
+                    alert('Error: Could not find preview display elements. Please refresh the page and try again.');
+                    return;
+                }
+
+                try {
+                    const csrfToken = document.querySelector('[name="csrf_token"]').value;
+                    console.log('Sending request to preview API...');
+
+                    const response = await fetch('{{ url_for("tasks.api_cron_preview") }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken
+                        },
+                        body: JSON.stringify({ cron_expression: cronExpr })
+                    });
+
+                    console.log('Response status:', response.status);
+                    const data = await response.json();
+                    console.log('Response data:', data);
+
+                    if (response.ok) {
+                        if (data.next_runs && data.next_runs.length > 0) {
+                            console.log('Displaying', data.next_runs.length, 'run times');
+
+                            // Create list items with simple styling
+                            const listHTML = data.next_runs.map((t, i) =>
+                                `<div style="padding: 3px 0;">${i + 1}. ${t}</div>`
+                            ).join('');
+                            cronPreviewList.innerHTML = listHTML;
+
+                            // Show the preview div
+                            cronPreviewDiv.style.display = 'block';
+
+                            console.log('Preview displayed. HTML length:', cronPreviewDiv.innerHTML.length);
+                            console.log('Preview div offsetHeight:', cronPreviewDiv.offsetHeight);
+                            console.log('Preview div offsetWidth:', cronPreviewDiv.offsetWidth);
+
+                            // Scroll to it
+                            setTimeout(() => {
+                                cronPreviewDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }, 100);
+                        } else {
+                            console.warn('No run times in response');
+                            alert('No run times returned from server');
+                        }
+                    } else {
+                        console.error('API returned error:', data.error);
+                        alert('Error: ' + (data.error || 'Unknown error occurred'));
+                    }
+                } catch (err) {
+                    console.error('Cron preview error:', err);
+                    alert('Failed to preview cron expression: ' + err.message);
+                }
+            });
+        } else {
+            console.error('Preview button not found in DOM');
+        }
     });
 </script>
 {% endblock %}

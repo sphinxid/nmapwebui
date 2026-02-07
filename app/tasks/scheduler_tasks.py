@@ -187,7 +187,6 @@ def check_missed_scheduled_runs():
 
                     elif task.schedule_type == 'weekly':
                         schedule_data = task.get_schedule_data()
-                        user_day_of_week = schedule_data.get('day_of_week', 0)
                         user_hour = schedule_data.get('hour', 0)
                         user_minute = schedule_data.get('minute', 0)
 
@@ -195,28 +194,77 @@ def check_missed_scheduled_runs():
                         user_timezone_str = user.timezone if user and user.timezone else 'UTC'
                         user_tz = pytz.timezone(user_timezone_str)
 
-                        current_utc_weekday = now_utc.weekday()
-                        days_ago = current_utc_weekday - user_day_of_week
-                        if days_ago < 0:
-                            days_ago += 7
-                        target_date_on_or_before_now_utc = now_utc.date() - timedelta(days=days_ago)
+                        # Check for multi-day format first (new format)
+                        if 'days' in schedule_data:
+                            days_list = schedule_data.get('days', [])
+                            if not days_list:
+                                logger.debug(f"[Task {task.id}] Weekly schedule has empty days list, skipping missed run check")
+                                continue
 
-                        naive_user_time_on_target_date = datetime(
-                            target_date_on_or_before_now_utc.year, target_date_on_or_before_now_utc.month, target_date_on_or_before_now_utc.day,
-                            user_hour, user_minute, 0
-                        )
-                        localized_user_time = user_tz.localize(naive_user_time_on_target_date, is_dst=None)
-                        utc_reference_schedule_time = localized_user_time.astimezone(pytz.UTC)
+                            # Find the most recent scheduled day that should have run
+                            current_utc_weekday = now_utc.weekday()
+                            most_recent_day = None
+                            min_days_ago = 8  # More than a week
 
-                        if utc_reference_schedule_time > now_utc:
-                            target_date_prev_week_utc = target_date_on_or_before_now_utc - timedelta(days=7)
-                            naive_user_time_prev_week = datetime(
-                                target_date_prev_week_utc.year, target_date_prev_week_utc.month, target_date_prev_week_utc.day,
+                            for user_day_of_week in days_list:
+                                days_ago = current_utc_weekday - user_day_of_week
+                                if days_ago < 0:
+                                    days_ago += 7
+
+                                if days_ago < min_days_ago:
+                                    min_days_ago = days_ago
+                                    most_recent_day = user_day_of_week
+
+                            if most_recent_day is None:
+                                logger.debug(f"[Task {task.id}] Could not determine most recent scheduled day from multi-day schedule")
+                                continue
+
+                            target_date_on_or_before_now_utc = now_utc.date() - timedelta(days=min_days_ago)
+
+                            naive_user_time_on_target_date = datetime(
+                                target_date_on_or_before_now_utc.year, target_date_on_or_before_now_utc.month, target_date_on_or_before_now_utc.day,
                                 user_hour, user_minute, 0
                             )
-                            localized_user_time_prev_week = user_tz.localize(naive_user_time_prev_week, is_dst=None)
-                            utc_reference_schedule_time = localized_user_time_prev_week.astimezone(pytz.UTC)
-                        logger.debug(f"Task {task.id} (Weekly): User DoW:{user_day_of_week} {user_hour:02d}:{user_minute:02d} {user_timezone_str}. Ref UTC: {utc_reference_schedule_time}.")
+                            localized_user_time = user_tz.localize(naive_user_time_on_target_date, is_dst=None)
+                            utc_reference_schedule_time = localized_user_time.astimezone(pytz.UTC)
+
+                            if utc_reference_schedule_time > now_utc:
+                                # If the most recent day hasn't occurred yet, look at the previous week's occurrence
+                                target_date_prev_week_utc = target_date_on_or_before_now_utc - timedelta(days=7)
+                                naive_user_time_prev_week = datetime(
+                                    target_date_prev_week_utc.year, target_date_prev_week_utc.month, target_date_prev_week_utc.day,
+                                    user_hour, user_minute, 0
+                                )
+                                localized_user_time_prev_week = user_tz.localize(naive_user_time_prev_week, is_dst=None)
+                                utc_reference_schedule_time = localized_user_time_prev_week.astimezone(pytz.UTC)
+
+                            logger.debug(f"Task {task.id} (Multi-day Weekly): Days {days_list}, {user_hour:02d}:{user_minute:02d} {user_timezone_str}. Ref UTC: {utc_reference_schedule_time}.")
+                        else:
+                            # Backward compatible single day format (old format)
+                            user_day_of_week = schedule_data.get('day_of_week', 0)
+
+                            current_utc_weekday = now_utc.weekday()
+                            days_ago = current_utc_weekday - user_day_of_week
+                            if days_ago < 0:
+                                days_ago += 7
+                            target_date_on_or_before_now_utc = now_utc.date() - timedelta(days=days_ago)
+
+                            naive_user_time_on_target_date = datetime(
+                                target_date_on_or_before_now_utc.year, target_date_on_or_before_now_utc.month, target_date_on_or_before_now_utc.day,
+                                user_hour, user_minute, 0
+                            )
+                            localized_user_time = user_tz.localize(naive_user_time_on_target_date, is_dst=None)
+                            utc_reference_schedule_time = localized_user_time.astimezone(pytz.UTC)
+
+                            if utc_reference_schedule_time > now_utc:
+                                target_date_prev_week_utc = target_date_on_or_before_now_utc - timedelta(days=7)
+                                naive_user_time_prev_week = datetime(
+                                    target_date_prev_week_utc.year, target_date_prev_week_utc.month, target_date_prev_week_utc.day,
+                                    user_hour, user_minute, 0
+                                )
+                                localized_user_time_prev_week = user_tz.localize(naive_user_time_prev_week, is_dst=None)
+                                utc_reference_schedule_time = localized_user_time_prev_week.astimezone(pytz.UTC)
+                            logger.debug(f"Task {task.id} (Weekly): User DoW:{user_day_of_week} {user_hour:02d}:{user_minute:02d} {user_timezone_str}. Ref UTC: {utc_reference_schedule_time}.")
 
                     elif task.schedule_type == 'monthly':
                         schedule_data = task.get_schedule_data()
@@ -282,6 +330,44 @@ def check_missed_scheduled_runs():
                             print(f"ERROR: Task {task.id} (Interval) - Error accessing job.next_run_time: {str(e)}", file=sys.stdout)
                             sys.stdout.flush()
 
+                    elif task.schedule_type == 'cron':
+                        # For cron schedules, rely on APScheduler's next_run_time
+                        # Similar to interval handling
+                        try:
+                            if hasattr(job, 'next_run_time') and job.next_run_time is not None:
+                                utc_reference_schedule_time = job.next_run_time
+                                logger.debug(f"Task {task.id} (Cron): Ref UTC from job.next_run_time: {utc_reference_schedule_time}.")
+                            else:
+                                # If no next_run_time, skip this check
+                                logger.debug(f"Task {task.id} (Cron): next_run_time not available, skipping missed run check.")
+                                continue
+                        except Exception as e:
+                            logger.error(f"Task {task.id} (Cron): Error accessing job.next_run_time: {str(e)}. Skipping.")
+                            continue
+
+                    elif task.schedule_type == 'one-time':
+                        # One-time schedules are automatically removed after execution
+                        # We can check if the scheduled time has passed
+                        schedule_data = task.get_schedule_data()
+                        run_datetime_str = schedule_data.get('run_datetime_str')
+                        if not run_datetime_str:
+                            logger.warning(f"Task {task.id} (One-time): No run_datetime_str found, skipping.")
+                            continue
+
+                        try:
+                            # Parse the scheduled time
+                            naive_run_dt = datetime.strptime(run_datetime_str, '%Y-%m-%d %H:%M:%S')
+                            user = User.query.get(task.user_id)
+                            user_timezone_str = user.timezone if user and user.timezone else 'UTC'
+                            user_tz = pytz.timezone(user_timezone_str)
+                            user_aware_dt = user_tz.localize(naive_run_dt)
+                            utc_reference_schedule_time = user_aware_dt.astimezone(pytz.UTC)
+
+                            logger.debug(f"Task {task.id} (One-time): Scheduled for {utc_reference_schedule_time} UTC.")
+                        except Exception as e:
+                            logger.error(f"Task {task.id} (One-time): Error parsing run_datetime_str: {str(e)}. Skipping.")
+                            continue
+
                     else:
                         logger.warning(f"Task {task.id} has unknown schedule type '{task.schedule_type}'. Skipping.")
                         continue
@@ -296,25 +382,29 @@ def check_missed_scheduled_runs():
                     
                     logger.debug(f"[Task {task.id}] Last run (UTC): {last_run_time_utc}. Reference schedule time (UTC): {utc_reference_schedule_time}")
 
-                    if task.schedule_type == 'interval':
+                    if task.schedule_type in ['interval', 'cron']:
+                        # For interval and cron schedules, check if next_run_time is in the past
                         try:
                             # Safely check if this is a missed run using proper attribute checking
                             if hasattr(job, 'next_run_time') and job.next_run_time and job.next_run_time < now_utc:
-                                logger.info(f"[Task {task.id}] INTERVAL MISSED RUN DETECTED. Job next_run_time: {job.next_run_time} < Current time: {now_utc}. Queuing new scan run.")
-                                print(f"TASK_EVENT: [Task {task.id}] INTERVAL MISSED RUN DETECTED. Queuing new scan run.", file=sys.stdout)
+                                schedule_type_label = task.schedule_type.upper()
+                                logger.info(f"[Task {task.id}] {schedule_type_label} MISSED RUN DETECTED. Job next_run_time: {job.next_run_time} < Current time: {now_utc}. Queuing new scan run.")
+                                print(f"TASK_EVENT: [Task {task.id}] {schedule_type_label} MISSED RUN DETECTED. Queuing new scan run.", file=sys.stdout)
                                 sys.stdout.flush()
                                 create_scheduled_scan_run(task.id)
                             else:
                                 next_run_str = job.next_run_time if hasattr(job, 'next_run_time') and job.next_run_time else "Unknown"
-                                logger.info(f"[Task {task.id}] Interval task appears to be on schedule. Next run: {next_run_str}. Current: {now_utc}.")
+                                logger.info(f"[Task {task.id}] {task.schedule_type.capitalize()} task appears to be on schedule. Next run: {next_run_str}. Current: {now_utc}.")
                         except Exception as e:
-                            logger.error(f"[Task {task.id}] Error checking interval schedule: {str(e)}")
-                            print(f"ERROR: [Task {task.id}] Error checking interval schedule: {str(e)}", file=sys.stdout)
+                            logger.error(f"[Task {task.id}] Error checking {task.schedule_type} schedule: {str(e)}")
+                            print(f"ERROR: [Task {task.id}] Error checking {task.schedule_type} schedule: {str(e)}", file=sys.stdout)
                             sys.stdout.flush()
                     elif last_run_time_utc is None or last_run_time_utc < utc_reference_schedule_time:
                         max_age_for_missed_run = timedelta(days=2)
                         if task.schedule_type == 'weekly': max_age_for_missed_run = timedelta(days=8)
                         if task.schedule_type == 'monthly': max_age_for_missed_run = timedelta(days=32)
+                        if task.schedule_type == 'cron': max_age_for_missed_run = timedelta(days=2)  # Use default for cron
+                        if task.schedule_type == 'one-time': max_age_for_missed_run = timedelta(days=1)  # One-time should run soon or not at all
 
                         if now_utc - utc_reference_schedule_time < max_age_for_missed_run:
                             logger.info(f"[Task {task.id}] MISSED RUN DETECTED. Last run: {last_run_time_utc}, Expected around: {utc_reference_schedule_time}. Queuing new scan run.")
@@ -544,39 +634,82 @@ def schedule_task(task):
             sys.stdout.flush()
 
     elif task.schedule_type == 'weekly':
-        day_of_week = schedule_data.get('day_of_week', 0)  # Monday is 0
         hour = schedule_data.get('hour', 0)
         minute = schedule_data.get('minute', 0)
 
-        # Convert from user timezone to UTC for scheduling
-        if user_timezone != 'UTC':
-            # Find the next occurrence of the specified day of week
-            today_utc = datetime.now(pytz.UTC)
-            days_ahead = day_of_week - today_utc.weekday()
-            if days_ahead < 0:  # Target day already happened this week
-                days_ahead += 7
+        # Check for multi-day format first (new format)
+        if 'days' in schedule_data:
+            days_list = schedule_data.get('days', [])
+            if not days_list:
+                logger.error(f"Weekly schedule for task {task.id} has empty days list")
+                return False
 
-            next_day = today_utc + timedelta(days=days_ahead)
-            user_tz = pytz.timezone(user_timezone)
+            # Convert from user timezone to UTC for scheduling
+            if user_timezone != 'UTC':
+                # For multi-day schedules, we need to convert each day's time to UTC
+                # and determine which UTC days correspond to the user's selected days
+                today_utc = datetime.now(pytz.UTC)
+                user_tz = pytz.timezone(user_timezone)
 
-            # Create a timezone-aware datetime in user's timezone
-            user_dt = user_tz.localize(
-                datetime(next_day.year, next_day.month, next_day.day, hour, minute, 0)
-            )
+                # Convert the time for a reference day to see if day shifts
+                # Use Monday as reference
+                reference_date = today_utc - timedelta(days=today_utc.weekday())
+                user_dt = user_tz.localize(
+                    datetime(reference_date.year, reference_date.month, reference_date.day, hour, minute, 0)
+                )
+                utc_dt = user_dt.astimezone(pytz.UTC)
 
-            # Convert to UTC
-            utc_dt = user_dt.astimezone(pytz.UTC)
-            # The day might change when converting to UTC
-            day_of_week = utc_dt.weekday()
-            hour = utc_dt.hour
-            minute = utc_dt.minute
+                # Calculate day offset due to timezone conversion
+                day_offset = utc_dt.weekday() - reference_date.weekday()
 
-            logger.info(f"Converted weekly schedule from {user_timezone} day {day_of_week}, {hour}:{minute} to UTC day {utc_dt.weekday()}, {utc_dt.hour}:{utc_dt.minute}")
+                # Apply offset to all selected days
+                utc_days = [(day + day_offset) % 7 for day in days_list]
+
+                # Remove duplicates and sort
+                utc_days = sorted(list(set(utc_days)))
+
+                hour = utc_dt.hour
+                minute = utc_dt.minute
+
+                logger.info(f"Converted multi-day weekly schedule from {user_timezone} days {days_list} to UTC days {utc_days}")
+            else:
+                utc_days = days_list
+
+            # Create comma-separated string for APScheduler
+            day_of_week = ','.join(str(d) for d in utc_days)
+        else:
+            # Backward compatible single day format (old format)
+            day_of_week = schedule_data.get('day_of_week', 0)  # Monday is 0
+
+            # Convert from user timezone to UTC for scheduling
+            if user_timezone != 'UTC':
+                # Find the next occurrence of the specified day of week
+                today_utc = datetime.now(pytz.UTC)
+                days_ahead = day_of_week - today_utc.weekday()
+                if days_ahead < 0:  # Target day already happened this week
+                    days_ahead += 7
+
+                next_day = today_utc + timedelta(days=days_ahead)
+                user_tz = pytz.timezone(user_timezone)
+
+                # Create a timezone-aware datetime in user's timezone
+                user_dt = user_tz.localize(
+                    datetime(next_day.year, next_day.month, next_day.day, hour, minute, 0)
+                )
+
+                # Convert to UTC
+                utc_dt = user_dt.astimezone(pytz.UTC)
+                # The day might change when converting to UTC
+                day_of_week = utc_dt.weekday()
+                hour = utc_dt.hour
+                minute = utc_dt.minute
+
+                logger.info(f"Converted weekly schedule from {user_timezone} day {day_of_week}, {hour}:{minute} to UTC day {utc_dt.weekday()}, {utc_dt.hour}:{utc_dt.minute}")
 
         scheduler.add_job(
             func=create_scheduled_scan_run,
             trigger='cron',
-            day_of_week=day_of_week,
+            day_of_week=day_of_week,  # Now supports comma-separated days like "0,2,4"
             hour=hour,
             minute=minute,
             id=job_id,
@@ -779,6 +912,72 @@ def schedule_task(task):
             logger.error(f"Error checking job status for {job_id}: {str(e)}")
             print(f"ERROR: Error checking job status for {job_id}: {str(e)}", file=sys.stdout)
             sys.stdout.flush()
+
+    elif task.schedule_type == 'cron':
+        cron_expression = schedule_data.get('cron_expression')
+        if not cron_expression:
+            logger.error(f"'cron_expression' not provided for cron task {task.id}")
+            return False
+
+        try:
+            # Validate the cron expression
+            from app.utils.cron_utils import validate_cron_expression
+            is_valid, error = validate_cron_expression(cron_expression)
+            if not is_valid:
+                logger.error(f"Invalid cron expression for task {task.id}: {error}")
+                return False
+
+            # Parse the cron expression into components
+            # Format: minute hour day month day_of_week
+            parts = cron_expression.strip().split()
+            if len(parts) < 5:
+                logger.error(f"Invalid cron expression format for task {task.id}: {cron_expression}")
+                return False
+
+            minute_expr, hour_expr, day_expr, month_expr, day_of_week_expr = parts[0:5]
+
+            # Note: Cron expressions are typically interpreted in the system timezone (UTC for this app)
+            # Users entering cron expressions should be aware that times are in UTC
+            # This is documented in the UI
+
+            scheduler.add_job(
+                func=create_scheduled_scan_run,
+                trigger='cron',
+                minute=minute_expr,
+                hour=hour_expr,
+                day=day_expr,
+                month=month_expr,
+                day_of_week=day_of_week_expr,
+                id=job_id,
+                args=[task.id],
+                misfire_grace_time=3600,  # Allow 1 hour for misfires
+                replace_existing=True, coalesce=True, max_instances=1
+            )
+
+            logger.info(f"Cron task {job_id} scheduled with expression: {cron_expression} (UTC)")
+
+            try:
+                # Safely get job and its next_run_time with error handling
+                job = scheduler.get_job(job_id)
+                if job:
+                    # Use hasattr to safely check for attribute existence
+                    if hasattr(job, 'next_run_time'):
+                        logger.info(f"Scheduled cron task {job_id} with next run time: {job.next_run_time} (UTC)")
+                    else:
+                        # Safely log without accessing the attribute
+                        logger.info(f"Scheduled cron task {job_id} successfully, next run time attribute not available")
+                        print(f"SCHEDULED_TASK: Cron task {job_id} scheduled successfully but next_run_time attribute is not available", file=sys.stdout)
+                        sys.stdout.flush()
+                else:
+                    logger.error(f"Failed to schedule cron task {job_id} or retrieve job details.")
+            except Exception as e:
+                logger.error(f"Error checking cron job status for {job_id}: {str(e)}")
+                print(f"ERROR: Error checking cron job status for {job_id}: {str(e)}", file=sys.stdout)
+                sys.stdout.flush()
+
+        except Exception as e:
+            logger.error(f"Error scheduling cron task {task.id}: {e}")
+            return False
 
     return True
 
