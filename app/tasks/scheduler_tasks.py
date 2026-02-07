@@ -515,6 +515,35 @@ def cleanup_zombie_scan_runs():
         
         logger.info(f"Zombie Task Cleanup job finished. Found and processed {zombie_count} zombie task(s).")
 
+def sync_scheduled_tasks():
+    """
+    Syncs scheduled tasks from database to APScheduler.
+    Adds any scheduled tasks that aren't currently in the scheduler.
+    This is useful when tasks are created/modified in a different process.
+    """
+    if _current_flask_app is None:
+        logger.error("CRITICAL: Flask app instance (_current_flask_app) is None in sync_scheduled_tasks.")
+        return
+
+    with _current_flask_app.app_context():
+        from app import scheduler
+        try:
+            # Get all tasks that should be scheduled
+            scheduled_tasks = ScanTask.query.filter_by(is_scheduled=True).all()
+
+            # Get current scheduler job IDs
+            current_jobs = {job.id for job in scheduler.get_jobs()}
+
+            # Schedule any missing tasks
+            for task in scheduled_tasks:
+                job_id = f"scan_task_{task.id}"
+                if job_id not in current_jobs:
+                    logger.info(f"Syncing task {task.id} ({task.name}) - not found in scheduler, adding it")
+                    schedule_task(task)
+
+        except Exception as e:
+            logger.error(f"Error in sync_scheduled_tasks: {str(e)}", exc_info=True)
+
 def initialize_scheduled_tasks():
     """Initializes all scheduled tasks from the database and the periodic missed run checker."""
     from app import scheduler, db
@@ -552,6 +581,17 @@ def initialize_scheduled_tasks():
             misfire_grace_time=300 # Allow 5 minutes for misfires
         )
         logger.info("Scheduled periodic check for missed runs (every 10 seconds).")
+
+        # Add periodic sync job to catch tasks created in other processes
+        scheduler.add_job(
+            func=sync_scheduled_tasks,
+            trigger='interval',
+            seconds=30,  # Check every 30 seconds
+            id='periodic_task_sync',
+            replace_existing=True, coalesce=True, max_instances=1,
+            misfire_grace_time=300
+        )
+        logger.info("Scheduled periodic task sync (every 30 seconds).")
 
         # Add the periodic zombie task cleanup job
         scheduler.add_job(func=cleanup_zombie_scan_runs, trigger='interval', minutes=1, id='periodic_zombie_cleanup', replace_existing=True, coalesce=True, max_instances=1)

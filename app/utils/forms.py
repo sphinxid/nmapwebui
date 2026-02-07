@@ -113,23 +113,88 @@ class ScanTaskForm(FlaskForm):
     name = StringField('Name', validators=[DataRequired(), Length(min=3, max=64)])
     description = TextAreaField('Description', validators=[Optional()])
     target_groups = SelectMultipleField('Target Groups', coerce=int, validators=[DataRequired()])
-    
+
     # Create choices for scan profiles from config
     scan_profile_choices = [(k, k.replace('_', ' ').title()) for k in Config.NMAP_SCAN_PROFILES.keys()]
     scan_profile_choices.insert(0, ('custom', 'Custom Arguments'))
-    
+
     scan_profile = SelectField('Scan Profile', choices=scan_profile_choices, validators=[DataRequired()])
     custom_args = StringField('Custom Nmap Arguments', validators=[Optional()])
-    
+
     # Report settings
     use_global_max_reports = BooleanField('Use Global Maximum Reports Setting', default=True,
                                         description='When enabled, this task will use the system-wide setting for maximum reports')
     max_reports = IntegerField('Maximum Reports to Keep', validators=[Optional(), NumberRange(min=1, max=100)],
                              description='Maximum number of reports to keep for this task (overrides global setting)')
-    
+
+    # Schedule settings (optional)
+    enable_schedule = BooleanField('Schedule this task', default=False)
+    schedule_type = SelectField('Schedule Type', choices=[
+        ('', 'Select schedule type...'),
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+        ('interval', 'Interval (Hours)'),
+        ('one-time', 'One-Time'),
+        ('cron', 'Cron Expression (Advanced)')
+    ], validators=[Optional()])
+
+    # Schedule fields (reuse from ScheduleForm)
+    hour = IntegerField('Hour (0-23)', validators=[Optional(), NumberRange(min=0, max=23)], default=0)
+    minute = IntegerField('Minute (0-59)', validators=[Optional(), NumberRange(min=0, max=59)], default=0)
+    days_of_week = SelectMultipleField('Days of Week',
+        choices=[
+            ('0', 'Monday'), ('1', 'Tuesday'), ('2', 'Wednesday'),
+            ('3', 'Thursday'), ('4', 'Friday'), ('5', 'Saturday'), ('6', 'Sunday')
+        ],
+        coerce=str,
+        default=[])
+    day = IntegerField('Day of Month (1-31)', validators=[Optional(), NumberRange(min=1, max=31)], default=1)
+    hours = IntegerField('Hours', validators=[Optional(), NumberRange(min=1)], default=24)
+    run_date = StringField('Run Date', validators=[Optional()])
+    run_time_hour = IntegerField('Hour (0-23)', validators=[Optional(), NumberRange(min=0, max=23)])
+    run_time_minute = IntegerField('Minute (0-59)', validators=[Optional(), NumberRange(min=0, max=59)])
+    cron_expression = StringField('Cron Expression', validators=[Optional()])
+    cron_description = StringField('Description (Optional)', validators=[Optional(), Length(max=255)])
+
     run_now = BooleanField('Run Immediately')
     submit = SubmitField('Save')
-    
+
+    def validate_schedule_type(self, schedule_type):
+        """Validate that schedule type is selected when scheduling is enabled"""
+        if self.enable_schedule.data and not schedule_type.data:
+            raise ValidationError('Please select a schedule type')
+
+    def validate_days_of_week(self, days_of_week):
+        """Custom validator for multi-day weekly schedules"""
+        if self.enable_schedule.data and self.schedule_type.data == 'weekly' and self.is_submitted():
+            if not days_of_week.data or len(days_of_week.data) == 0:
+                raise ValidationError('Please select at least one day for weekly schedule')
+
+    def validate_cron_expression(self, cron_expression):
+        """Custom validator for cron expressions"""
+        if self.enable_schedule.data and self.schedule_type.data == 'cron':
+            if not cron_expression.data:
+                raise ValidationError('Cron expression is required')
+            from app.utils.cron_utils import validate_cron_expression as validate_cron
+            is_valid, error = validate_cron(cron_expression.data)
+            if not is_valid:
+                raise ValidationError(f'Invalid cron expression: {error}')
+
+    def validate_run_date(self, run_date):
+        """Custom validator for one-time schedule date"""
+        if self.enable_schedule.data and self.schedule_type.data == 'one-time':
+            if not run_date.data:
+                raise ValidationError('Run date is required for one-time schedules')
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(run_date.data, '%Y-%m-%d')
+                today = datetime.now().date()
+                if date_obj.date() < today:
+                    raise ValidationError('Run date must be today or in the future')
+            except ValueError:
+                raise ValidationError('Invalid date format. Expected YYYY-MM-DD')
+
     def validate_custom_args(self, custom_args):
         if self.scan_profile.data == 'custom' and not custom_args.data:
             raise ValidationError('Custom arguments are required when using custom profile.')

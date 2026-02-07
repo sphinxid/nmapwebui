@@ -155,7 +155,65 @@ def create():
         db.session.add(scan_task)
         db.session.commit()
 
-        flash('Scan task created successfully!', 'success')
+        # Handle scheduling if enabled
+        if form.enable_schedule.data and form.schedule_type.data:
+            schedule_type = form.schedule_type.data
+            schedule_data = {}
+
+            if schedule_type == 'daily':
+                schedule_data = {
+                    'hour': form.hour.data,
+                    'minute': form.minute.data
+                }
+            elif schedule_type == 'weekly':
+                days_of_week = form.days_of_week.data
+                if days_of_week and len(days_of_week) > 0:
+                    schedule_data = {
+                        'days': [int(d) for d in days_of_week],
+                        'hour': form.hour.data,
+                        'minute': form.minute.data
+                    }
+            elif schedule_type == 'monthly':
+                schedule_data = {
+                    'day': form.day.data,
+                    'hour': form.hour.data,
+                    'minute': form.minute.data
+                }
+            elif schedule_type == 'interval':
+                schedule_data = {
+                    'hours': form.hours.data
+                }
+            elif schedule_type == 'one-time':
+                run_datetime_str = f"{form.run_date.data} {form.run_time_hour.data:02d}:{form.run_time_minute.data:02d}:00"
+                schedule_data = {
+                    'run_datetime_str': run_datetime_str
+                }
+            elif schedule_type == 'cron':
+                schedule_data = {
+                    'cron_expression': form.cron_expression.data,
+                    'description': form.cron_description.data or ''
+                }
+
+            # Update task with schedule information
+            scan_task.is_scheduled = True
+            scan_task.schedule_type = schedule_type
+            scan_task.schedule_data = json.dumps(schedule_data)
+            db.session.commit()
+
+            # Schedule the task with APScheduler
+            try:
+                result = schedule_task(scan_task)
+                if result:
+                    current_app.logger.info(f"Successfully scheduled task {scan_task.id} ({scan_task.name}) with type {schedule_type}")
+                    flash('Scan task created and scheduled successfully!', 'success')
+                else:
+                    current_app.logger.error(f"Failed to schedule task {scan_task.id} ({scan_task.name}) - schedule_task returned False")
+                    flash('Scan task created but scheduling failed. Please edit the schedule.', 'warning')
+            except Exception as e:
+                current_app.logger.error(f"Error scheduling task {scan_task.id} ({scan_task.name}): {str(e)}", exc_info=True)
+                flash('Scan task created but scheduling encountered an error. Please edit the schedule.', 'warning')
+        else:
+            flash('Scan task created successfully!', 'success')
 
         # Run the scan immediately if requested
         if form.run_now.data:
@@ -163,7 +221,12 @@ def create():
 
         return redirect(url_for('tasks.index'))
 
-    return render_template('tasks/create.html', title='Create Scan Task', form=form)
+    # Get user timezone for schedule display
+    from app.models.user import User
+    user = User.query.get(current_user.id)
+    timezone_display = get_timezone_display_name(user.timezone if user else 'UTC')
+
+    return render_template('tasks/create.html', title='Create Scan Task', form=form, timezone_display=timezone_display)
 
 @tasks_bp.route('/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
