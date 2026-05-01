@@ -72,9 +72,15 @@ func ExecuteScan(ctx context.Context, runID, taskID uint, cfg *config.Config) er
 	})
 
 	cmd := exec.CommandContext(ctx, "nmap", args...)
+	// nmap writes progress stats to stderr, so we need to capture both
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		failRun(runID, fmt.Sprintf("stdout pipe: %v", err))
+		return nil
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		failRun(runID, fmt.Sprintf("stderr pipe: %v", err))
 		return nil
 	}
 
@@ -92,6 +98,18 @@ func ExecuteScan(ctx context.Context, runID, taskID uint, cfg *config.Config) er
 		"status": "running", "pid": pid,
 	})
 
+	// Scan stderr in background for progress updates (nmap writes stats there)
+	go func() {
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			line := sc.Text()
+			if strings.Contains(line, "About") && strings.Contains(line, "% done") {
+				parseAndPublishProgress(ctx, runID, line)
+			}
+		}
+	}()
+
+	// Drain stdout so the process doesn't block
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
 		line := scanner.Text()

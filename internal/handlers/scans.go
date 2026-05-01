@@ -35,7 +35,7 @@ func ListScanTasks(c *gin.Context) {
 	user, _ := c.Get("user")
 	u := user.(models.User)
 	var tasks []models.ScanTask
-	db.DB.Preload("TargetGroups").Where("user_id = ?", u.ID).Find(&tasks)
+	db.DB.Preload("TargetGroups").Preload("ScanRuns").Where("user_id = ?", u.ID).Find(&tasks)
 	c.JSON(http.StatusOK, tasks)
 }
 

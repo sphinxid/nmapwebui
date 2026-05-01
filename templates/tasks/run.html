@@ -59,8 +59,10 @@ evtSource.addEventListener('status', (e) => {
 });
 evtSource.addEventListener('progress', (e) => {
     const data = JSON.parse(e.data);
-    progressLabel.textContent = (data.progress || 0) + '%';
-    progressBar.style.width = (data.progress || 0) + '%';
+    const pct = data.progress || 0;
+    progressLabel.textContent = pct + '%';
+    progressBar.style.width = pct + '%';
+    addLog(`Progress: ${pct}%`);
 });
 evtSource.addEventListener('error', () => { addLog('Event stream error', 'error'); });
 

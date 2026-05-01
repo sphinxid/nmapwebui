@@ -4,3 +4,4 @@ venv/
 graphify-out/
 .env
 *.db
+.*.swp
