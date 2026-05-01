@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+{{template "nav" .}}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Target Groups</h1>
+    <button onclick="openModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition"><i class="fas fa-plus mr-2"></i>New Group</button>
+</div>
+
+<div id="groupsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="text-gray-500 col-span-full text-center py-8">Loading groups...</div>
+</div>
+
+<div id="groupModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-lg shadow-xl">
+        <h3 class="text-lg font-bold mb-4">Create Target Group</h3>
+        <form id="groupForm" class="space-y-4">
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Name</label>
+                <input type="text" name="name" required class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-emerald-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Description</label>
+                <input type="text" name="description" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-emerald-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Targets (one per line: IP, CIDR, hostname)</label>
+                <textarea name="targets" rows="4" placeholder="192.168.1.1&#10;10.0.0.0/24&#10;example.com" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-emerald-500 outline-none font-mono text-sm"></textarea>
+            </div>
+            <div id="modalError" class="text-red-400 text-sm hidden"></div>
+            <div class="flex justify-end space-x-2 pt-2">
+                <button type="button" onclick="closeModal()" class="text-gray-400 hover:text-white px-3 py-1.5 text-sm">Cancel</button>
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded text-sm font-medium">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+async function loadGroups() {
+    const res = await fetch('/api/targets/', { credentials: 'same-origin' });
+    if (!res.ok) { document.getElementById('groupsContainer').innerHTML = '<div class="text-red-400 col-span-full text-center">Failed to load</div>'; return; }
+    const groups = await res.json();
+    const container = document.getElementById('groupsContainer');
+    if (groups.length === 0) {
+        container.innerHTML = '<div class="text-gray-500 col-span-full text-center py-8">No target groups yet. Create one to get started.</div>';
+        return;
+    }
+    container.innerHTML = groups.map(g => `
+        <div class="bg-gray-800 rounded-lg p-4 shadow hover:shadow-lg transition">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="font-semibold text-lg">${escapeHtml(g.Name)}</h3>
+                <button onclick="deleteGroup(${g.ID})" class="text-red-400 hover:text-red-300 text-sm"><i class="fas fa-trash"></i></button>
+            </div>
+            <p class="text-sm text-gray-400 mb-3">${escapeHtml(g.Description || '')}</p>
+            <div class="bg-gray-900 rounded p-2 max-h-40 overflow-y-auto">
+                ${g.Targets.map(t => `<div class="text-xs font-mono text-gray-300 py-0.5"><span class="text-emerald-400">${t.TargetType}</span> ${escapeHtml(t.Value)}</div>`).join('')}
+                ${g.Targets.length === 0 ? '<div class="text-xs text-gray-500">No targets</div>' : ''}
+            </div>
+            <div class="mt-3 text-xs text-gray-500">${g.Targets.length} targets</div>
+        </div>
+    `).join('');
+}
+async function deleteGroup(id) {
+    if (!confirm('Delete this group and all its targets?')) return;
+    const res = await fetch(`/api/targets/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+    if (res.ok) loadGroups(); else alert('Failed to delete');
+}
+function openModal() { document.getElementById('groupModal').classList.remove('hidden'); }
+function closeModal() { document.getElementById('groupModal').classList.add('hidden'); document.getElementById('modalError').classList.add('hidden'); }
+document.getElementById('groupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const lines = form.targets.value.split('\n').map(l => l.trim()).filter(l => l);
+    const targets = lines.map(l => {
+        let type = 'ip';
+        if (l.includes('/')) type = 'cidr';
+        else if (/[a-zA-Z]/.test(l)) type = 'hostname';
+        return { value: l, target_type: type };
+    });
+    const data = { name: form.name.value, description: form.description.value, targets };
+    const res = await fetch('/api/targets/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data), credentials: 'same-origin' });
+    if (res.ok) { closeModal(); form.reset(); loadGroups(); }
+    else { const err = await res.json(); document.getElementById('modalError').textContent = err.detail || 'Failed'; document.getElementById('modalError').classList.remove('hidden'); }
+});
+function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+loadGroups();
+</script>
+</main>
+</body>
+</html>

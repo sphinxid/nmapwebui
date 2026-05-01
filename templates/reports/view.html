@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+{{template "nav" .}}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div id="reportView" class="max-w-6xl mx-auto">
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+        <div>
+            <h1 class="text-2xl font-bold">Scan Report <span id="reportId" class="text-emerald-400">#...</span></h1>
+            <p id="reportMeta" class="text-gray-400 text-sm mt-1"></p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a id="xmlLink" href="#" class="inline-flex items-center bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-code mr-1.5"></i>XML</a>
+            <a id="txtLink" href="#" class="inline-flex items-center bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-file-alt mr-1.5"></i>Text</a>
+            <a id="pdfLink" href="#" class="inline-flex items-center bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-file-pdf mr-1.5"></i>PDF</a>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div id="summaryCards" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6 hidden">
+        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div class="text-2xl font-bold text-emerald-400" id="totalHosts">0</div>
+            <div class="text-xs text-gray-400 uppercase tracking-wide mt-1">Total Hosts</div>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div class="text-2xl font-bold text-green-400" id="hostsUp">0</div>
+            <div class="text-xs text-gray-400 uppercase tracking-wide mt-1">Hosts Up</div>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div class="text-2xl font-bold text-amber-400" id="totalPorts">0</div>
+            <div class="text-xs text-gray-400 uppercase tracking-wide mt-1">Open Ports</div>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div class="text-2xl font-bold text-blue-400" id="totalServices">0</div>
+            <div class="text-xs text-gray-400 uppercase tracking-wide mt-1">Services</div>
+        </div>
+    </div>
+
+    <div id="hostsContainer" class="space-y-6"><div class="text-center text-gray-500 py-8">Loading...</div></div>
+</div>
+
+<script>
+const reportId = window.location.pathname.split('/').pop();
+document.getElementById('xmlLink').href = `/api/reports/${reportId}/download/xml`;
+document.getElementById('txtLink').href = `/api/reports/${reportId}/download/txt`;
+document.getElementById('pdfLink').href = `/api/reports/${reportId}/download/pdf`;
+document.getElementById('reportId').textContent = '#' + reportId;
+
+async function loadReport() {
+    const res = await fetch(`/api/reports/${reportId}`, { credentials: 'same-origin' });
+    if (!res.ok) { document.getElementById('hostsContainer').innerHTML = '<div class="text-red-400 text-center py-8">Failed to load report</div>'; return; }
+    const report = await res.json();
+    const hosts = report.Hosts || [];
+    const container = document.getElementById('hostsContainer');
+
+    if (report.CreatedAt) {
+        document.getElementById('reportMeta').textContent = `Generated on ${new Date(report.CreatedAt).toLocaleString()}${report.Summary ? ' \u2022 ' + report.Summary : ''}`;
+    }
+
+    if (hosts.length === 0) {
+        container.innerHTML = '<div class="bg-gray-800 rounded-lg p-8 text-center"><i class="fas fa-search text-4xl text-gray-600 mb-3"></i><p class="text-gray-500">No hosts found in this scan.</p></div>';
+        return;
+    }
+
+    // Summary stats
+    const hostsUp = hosts.filter(h => h.Status === 'up').length;
+    const allPorts = hosts.flatMap(h => h.Ports || []);
+    const openPorts = allPorts.filter(p => p.State === 'open');
+    const services = new Set(openPorts.map(p => p.Service).filter(Boolean));
+
+    document.getElementById('totalHosts').textContent = hosts.length;
+    document.getElementById('hostsUp').textContent = hostsUp;
+    document.getElementById('totalPorts').textContent = openPorts.length;
+    document.getElementById('totalServices').textContent = services.size;
+    document.getElementById('summaryCards').classList.remove('hidden');
+
+    container.innerHTML = hosts.map((h, idx) => {
+        const ports = h.Ports || [];
+        const openCount = ports.filter(p => p.State === 'open').length;
+        const statusColor = h.Status === 'up' ? 'emerald' : 'red';
+        return `
+        <div class="bg-gray-800 rounded-lg shadow border border-gray-700 overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-${statusColor}-900 border border-${statusColor}-700 flex items-center justify-center">
+                        <i class="fas fa-${h.Status === 'up' ? 'server' : 'times'} text-${statusColor}-400"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg font-mono">${escapeHtml(h.IPAddress)}</h3>
+                        ${h.Hostname ? `<p class="text-sm text-gray-400">${escapeHtml(h.Hostname)}</p>` : ''}
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 text-sm">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${statusColor}-900 text-${statusColor}-300 border border-${statusColor}-700">
+                        <span class="w-1.5 h-1.5 rounded-full bg-${statusColor}-400 mr-1.5"></span>${h.Status.toUpperCase()}
+                    </span>
+                    ${h.OSInfo ? `<span class="text-blue-400 text-xs"><i class="fas fa-laptop mr-1"></i>${escapeHtml(h.OSInfo)}</span>` : ''}
+                    <span class="text-gray-400 text-xs">${openCount} open port${openCount !== 1 ? 's' : ''}</span>
+                </div>
+            </div>
+            ${ports.length > 0 ? `
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-gray-750 text-gray-400 text-xs uppercase tracking-wider" style="background: rgba(55,65,81,0.5)">
+                        <tr>
+                            <th class="px-5 py-3 font-medium">Port</th>
+                            <th class="px-5 py-3 font-medium">State</th>
+                            <th class="px-5 py-3 font-medium">Service</th>
+                            <th class="px-5 py-3 font-medium">Version</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700/50">
+                        ${ports.map(p => {
+                            const stateColor = p.State === 'open' ? 'emerald' : p.State === 'filtered' ? 'amber' : 'gray';
+                            return `
+                            <tr class="hover:bg-gray-700/30 transition-colors">
+                                <td class="px-5 py-2.5 font-mono text-white">${p.PortNumber}<span class="text-gray-500">/${p.Protocol}</span></td>
+                                <td class="px-5 py-2.5">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-${stateColor}-900/50 text-${stateColor}-400 border border-${stateColor}-800/50">
+                                        ${p.State}
+                                    </span>
+                                </td>
+                                <td class="px-5 py-2.5 text-gray-300">${escapeHtml(p.Service || '-')}</td>
+                                <td class="px-5 py-2.5 text-gray-400 text-xs">${escapeHtml(p.Version || '-')}</td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>` : `<div class="px-5 py-4 text-gray-500 text-sm">No port information available</div>`}
+        </div>`;
+    }).join('');
+}
+function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+loadReport();
+</script>
+</main>
+</body>
+</html>

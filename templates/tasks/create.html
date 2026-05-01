@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+{{template "nav" .}}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="max-w-2xl mx-auto">
+    <h1 class="text-2xl font-bold mb-6">Create Scan Task</h1>
+    <form id="createForm" class="bg-gray-800 rounded-lg p-6 shadow space-y-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-400 mb-1">Name</label>
+            <input type="text" name="name" required class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-400 mb-1">Description</label>
+            <textarea name="description" rows="2" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500"></textarea>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-400 mb-1">Scan Profile</label>
+            <select id="profileSelect" name="scan_profile" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+                <option value="">Custom</option>
+            </select>
+        </div>
+        <div id="customArgsContainer">
+            <label class="block text-sm font-medium text-gray-400 mb-1">Custom Arguments</label>
+            <input type="text" name="custom_args" placeholder="-T4 -A -v" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-400 mb-1">Target Groups</label>
+            <div id="targetGroups" class="space-y-2 max-h-40 overflow-y-auto bg-gray-700 rounded p-2">
+                <div class="text-gray-500 text-sm">Loading target groups...</div>
+            </div>
+        </div>
+        <div id="errorMsg" class="text-red-400 text-sm hidden"></div>
+        <div class="flex items-center justify-end space-x-3 pt-4">
+            <a href="/tasks" class="text-gray-400 hover:text-white text-sm">Cancel</a>
+            <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition">Create Task</button>
+        </div>
+    </form>
+</div>
+
+<script>
+async function loadProfiles() {
+    const res = await fetch('/api/scans/profiles', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const profiles = await res.json();
+    const select = document.getElementById('profileSelect');
+    profiles.forEach(p => { const opt = document.createElement('option'); opt.value = p.name; opt.textContent = `${p.name} (${p.nmap_args})`; select.appendChild(opt); });
+}
+async function loadTargetGroups() {
+    const res = await fetch('/api/targets/', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const groups = await res.json();
+    const container = document.getElementById('targetGroups');
+    if (groups.length === 0) { container.innerHTML = '<div class="text-gray-500 text-sm">No target groups. <a href="/targets" class="text-emerald-400 hover:underline">Create one first</a>.</div>'; return; }
+    container.innerHTML = groups.map(g => `
+        <label class="flex items-center space-x-2 text-sm">
+            <input type="checkbox" name="target_groups" value="${g.ID}" class="rounded border-gray-600 bg-gray-600 text-emerald-500 focus:ring-emerald-500">
+            <span>${escapeHtml(g.Name)} (${(g.Targets || []).length} targets)</span>
+        </label>
+    `).join('');
+}
+document.getElementById('createForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const data = {
+        name: form.name.value, description: form.description.value,
+        scan_profile: form.scan_profile.value || null, custom_args: form.custom_args.value || null,
+        target_group_ids: Array.from(form.querySelectorAll('input[name="target_groups"]:checked')).map(cb => parseInt(cb.value))
+    };
+    const errorMsg = document.getElementById('errorMsg'); errorMsg.classList.add('hidden');
+    const res = await fetch('/api/scans/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data), credentials: 'same-origin' });
+    if (res.ok) { window.location.href = '/tasks'; }
+    else { const err = await res.json(); errorMsg.textContent = err.detail || 'Failed to create task'; errorMsg.classList.remove('hidden'); }
+});
+function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+loadProfiles(); loadTargetGroups();
+</script>
+</main>
+</body>
+</html>

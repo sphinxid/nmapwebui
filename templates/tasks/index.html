@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+{{template "nav" .}}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Scan Tasks</h1>
+    <a href="/tasks/create" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition"><i class="fas fa-plus mr-2"></i>New Task</a>
+</div>
+<div id="tasksContainer" class="space-y-4">
+    <div class="text-center text-gray-500 py-8">Loading tasks...</div>
+</div>
+
+<script>
+async function loadTasks() {
+    const res = await fetch('/api/scans/tasks', { credentials: 'same-origin' });
+    if (!res.ok) { document.getElementById('tasksContainer').innerHTML = '<div class="text-red-400 text-center">Failed to load tasks</div>'; return; }
+    const tasks = await res.json();
+    const container = document.getElementById('tasksContainer');
+    if (tasks.length === 0) {
+        container.innerHTML = '<div class="text-gray-500 text-center py-8">No scan tasks yet. <a href="/tasks/create" class="text-emerald-400 hover:underline">Create one</a>.</div>';
+        return;
+    }
+    container.innerHTML = tasks.map(t => `
+        <div class="bg-gray-800 rounded-lg p-4 flex items-center justify-between shadow hover:shadow-lg transition">
+            <div>
+                <h3 class="font-semibold text-lg">${escapeHtml(t.Name)}</h3>
+                <p class="text-sm text-gray-400">${t.ScanProfile || 'Custom'} &bull; ${(t.TargetGroups || []).length} target groups</p>
+                ${t.IsScheduled ? '<span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded mt-1 inline-block">Scheduled</span>' : ''}
+            </div>
+            <div class="flex items-center space-x-2">
+                <button onclick="runTask(${t.ID})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-play mr-1"></i>Run</button>
+                <a href="/tasks/view/${t.ID}" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition">View</a>
+            </div>
+        </div>
+    `).join('');
+}
+async function runTask(id) {
+    const res = await fetch(`/api/scans/tasks/${id}/run`, { method: 'POST', credentials: 'same-origin' });
+    if (res.ok) { const run = await res.json(); window.location.href = `/tasks/run/${run.ID}`; }
+    else { const err = await res.json(); alert(err.detail || 'Failed to start scan'); }
+}
+function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+loadTasks();
+</script>
+</main>
+</body>
+</html>

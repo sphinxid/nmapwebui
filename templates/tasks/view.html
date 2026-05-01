@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+{{template "nav" .}}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div id="taskView" class="max-w-5xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold" id="taskName">...</h1>
+            <p class="text-gray-400 text-sm" id="taskMeta">...</p>
+        </div>
+        <div class="space-x-2">
+            <button onclick="runTask()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition"><i class="fas fa-play mr-2"></i>Run Now</button>
+        </div>
+    </div>
+    <div class="bg-gray-800 rounded-lg shadow overflow-hidden mb-6">
+        <div class="px-6 py-4 border-b border-gray-700"><h3 class="text-lg font-semibold">Scan Runs</h3></div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-gray-700 text-gray-300 text-sm uppercase">
+                    <tr>
+                        <th class="px-6 py-3">ID</th>
+                        <th class="px-6 py-3">Status</th>
+                        <th class="px-6 py-3">Progress</th>
+                        <th class="px-6 py-3">Created</th>
+                        <th class="px-6 py-3">Reports</th>
+                        <th class="px-6 py-3"></th>
+                    </tr>
+                </thead>
+                <tbody id="runsBody" class="divide-y divide-gray-700"><tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+const taskId = window.location.pathname.split('/').pop();
+async function loadTask() {
+    const res = await fetch(`/api/scans/tasks/${taskId}`, { credentials: 'same-origin' });
+    if (!res.ok) { document.getElementById('taskName').textContent = 'Not found'; return; }
+    const task = await res.json();
+    document.getElementById('taskName').textContent = task.Name;
+    document.getElementById('taskMeta').textContent = `${task.ScanProfile || 'Custom'} \u2022 ${(task.TargetGroups || []).length} groups \u2022 ${task.IsScheduled ? 'Scheduled' : 'On-demand'}`;
+    renderRuns(task.ScanRuns || []);
+}
+function renderRuns(runs) {
+    const tbody = document.getElementById('runsBody');
+    if (runs.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No runs yet</td></tr>'; return; }
+    tbody.innerHTML = runs.map(r => {
+        const hasReport = r.Report && r.Report.ID;
+        const reportId = hasReport ? r.Report.ID : null;
+        return `
+        <tr>
+            <td class="px-6 py-3 text-sm">${r.ID}</td>
+            <td class="px-6 py-3 text-sm">${statusBadge(r.Status)}</td>
+            <td class="px-6 py-3 text-sm">
+                <div class="w-full bg-gray-700 rounded-full h-2"><div class="bg-emerald-500 h-2 rounded-full" style="width: ${r.Progress || 0}%"></div></div>
+                <span class="text-xs text-gray-400">${r.Progress || 0}%</span>
+            </td>
+            <td class="px-6 py-3 text-sm text-gray-400">${r.CreatedAt ? new Date(r.CreatedAt).toLocaleString() : '-'}</td>
+            <td class="px-6 py-3 text-sm">
+                ${hasReport ? `
+                <div class="flex flex-wrap gap-1.5">
+                    <a href="/reports/${reportId}" class="inline-flex items-center bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-0.5 rounded text-xs transition" title="View Report"><i class="fas fa-eye mr-1"></i>View</a>
+                    <a href="/api/reports/${reportId}/download/xml" class="inline-flex items-center bg-gray-700 hover:bg-gray-600 text-white px-2 py-0.5 rounded text-xs transition" title="Download XML"><i class="fas fa-code mr-1"></i>XML</a>
+                    <a href="/api/reports/${reportId}/download/txt" class="inline-flex items-center bg-gray-700 hover:bg-gray-600 text-white px-2 py-0.5 rounded text-xs transition" title="Download Text"><i class="fas fa-file-alt mr-1"></i>TXT</a>
+                    <a href="/api/reports/${reportId}/download/pdf" class="inline-flex items-center bg-red-700 hover:bg-red-600 text-white px-2 py-0.5 rounded text-xs transition" title="Download PDF"><i class="fas fa-file-pdf mr-1"></i>PDF</a>
+                </div>` : `<span class="text-gray-500 text-xs">${r.Status === 'completed' ? 'No report' : '-'}</span>`}
+            </td>
+            <td class="px-6 py-3 text-sm">
+                ${r.Status === 'running' ? `<a href="/tasks/run/${r.ID}" class="text-emerald-400 hover:underline text-xs"><i class="fas fa-broadcast-tower mr-1"></i>Live</a>` : ''}
+            </td>
+        </tr>`;
+    }).join('');
+}
+function statusBadge(status) {
+    const colors = { queued: 'bg-gray-700 text-gray-300', running: 'bg-amber-900 text-amber-300', completed: 'bg-emerald-900 text-emerald-300', failed: 'bg-red-900 text-red-300' };
+    return `<span class="px-2 py-1 rounded text-xs font-medium ${colors[status] || colors.queued}">${status}</span>`;
+}
+async function runTask() {
+    const res = await fetch(`/api/scans/tasks/${taskId}/run`, { method: 'POST', credentials: 'same-origin' });
+    if (res.ok) { const run = await res.json(); window.location.href = `/tasks/run/${run.ID}`; }
+    else { const err = await res.json(); alert(err.detail || 'Failed to start scan'); }
+}
+loadTask();
+setInterval(loadTask, 7000);
+</script>
+</main>
+</body>
+</html>

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+{{template "nav" .}}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="max-w-5xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold">User Management</h1>
+            <p class="text-gray-400 text-sm mt-1">Create and manage user accounts</p>
+        </div>
+        <button onclick="showCreateModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition">
+            <i class="fas fa-user-plus mr-2"></i>Add User
+        </button>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg shadow border border-gray-700 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-gray-700 text-gray-300 text-sm uppercase">
+                    <tr>
+                        <th class="px-6 py-3">User</th>
+                        <th class="px-6 py-3">Email</th>
+                        <th class="px-6 py-3">Role</th>
+                        <th class="px-6 py-3">Status</th>
+                        <th class="px-6 py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="usersBody" class="divide-y divide-gray-700">
+                    <tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Create User Modal -->
+<div id="createModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 hidden">
+    <div class="bg-gray-800 rounded-lg shadow-xl border border-gray-700 w-full max-w-md mx-4 p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold">Add New User</h2>
+            <button onclick="hideCreateModal()" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+        </div>
+        <form id="createForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-1">Username</label>
+                <input type="text" name="username" required class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-1">Email</label>
+                <input type="email" name="email" required class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-1">Password</label>
+                <input type="password" name="password" required minlength="6" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-1">Role</label>
+                <select name="role" id="createRoleSelect" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+                    <option value="user">User</option>
+                </select>
+            </div>
+            <div id="createError" class="text-red-400 text-sm hidden"></div>
+            <div class="flex justify-end gap-3 pt-2">
+                <button type="button" onclick="hideCreateModal()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm transition">Cancel</button>
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition">Create User</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div id="editModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 hidden">
+    <div class="bg-gray-800 rounded-lg shadow-xl border border-gray-700 w-full max-w-md mx-4 p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold">Edit User <span id="editUsername" class="text-emerald-400"></span></h2>
+            <button onclick="hideEditModal()" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+        </div>
+        <form id="editForm" class="space-y-4">
+            <input type="hidden" name="userId" id="editUserId">
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-1">Email</label>
+                <input type="email" name="email" id="editEmail" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-1">New Password <span class="text-gray-500">(leave blank to keep)</span></label>
+                <input type="password" name="password" id="editPassword" minlength="6" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+            </div>
+            <div id="editRoleGroup">
+                <label class="block text-sm font-medium text-gray-400 mb-1">Role</label>
+                <select name="role" id="editRoleSelect" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+                    <option value="user">User</option>
+                </select>
+            </div>
+            <div>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="active" id="editActive" class="rounded bg-gray-700 border-gray-600 text-emerald-500 focus:ring-emerald-500">
+                    <span class="text-sm text-gray-400">Active</span>
+                </label>
+            </div>
+            <div id="editError" class="text-red-400 text-sm hidden"></div>
+            <div class="flex justify-end gap-3 pt-2">
+                <button type="button" onclick="hideEditModal()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm transition">Cancel</button>
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const myRole = '{{if .User}}{{.User.Role}}{{end}}';
+const myId = {{if .User}}{{.User.ID}}{{else}}0{{end}};
+const isSuperAdmin = myRole === 'superadmin';
+
+// Populate role dropdowns based on caller's role
+if (isSuperAdmin) {
+    document.getElementById('createRoleSelect').innerHTML = '<option value="user">User</option><option value="admin">Admin</option>';
+    document.getElementById('editRoleSelect').innerHTML = '<option value="user">User</option><option value="admin">Admin</option>';
+}
+
+async function loadUsers() {
+    const res = await fetch('/api/admin/users', { credentials: 'same-origin' });
+    if (!res.ok) { document.getElementById('usersBody').innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-red-400">Failed to load</td></tr>'; return; }
+    const users = await res.json();
+    const tbody = document.getElementById('usersBody');
+    if (!users || users.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No users</td></tr>'; return; }
+    tbody.innerHTML = users.map(u => {
+        const roleBadge = u.Role === 'superadmin' ? 'bg-purple-900 text-purple-300 border-purple-700'
+            : u.Role === 'admin' ? 'bg-amber-900 text-amber-300 border-amber-700'
+            : 'bg-gray-700 text-gray-300 border-gray-600';
+        const statusBadge = u.Active ? 'bg-emerald-900 text-emerald-300' : 'bg-red-900 text-red-300';
+        const canEdit = u.Role !== 'superadmin' || u.ID === myId;
+        const canDelete = u.Role !== 'superadmin' && u.ID !== myId && (isSuperAdmin || u.Role === 'user');
+        return `
+        <tr>
+            <td class="px-6 py-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-sm font-bold text-gray-300">${u.Username.charAt(0).toUpperCase()}</div>
+                    <span class="font-medium">${escapeHtml(u.Username)}</span>
+                </div>
+            </td>
+            <td class="px-6 py-3 text-sm text-gray-400">${escapeHtml(u.Email)}</td>
+            <td class="px-6 py-3 text-sm">
+                <span class="px-2 py-0.5 rounded-full text-xs font-medium border ${roleBadge}">${u.Role}</span>
+            </td>
+            <td class="px-6 py-3 text-sm">
+                <span class="px-2 py-0.5 rounded text-xs font-medium ${statusBadge}">${u.Active ? 'Active' : 'Inactive'}</span>
+            </td>
+            <td class="px-6 py-3 text-sm text-right">
+                <div class="flex justify-end gap-2">
+                    ${canEdit ? `<button onclick='editUser(${JSON.stringify(u)})' class="text-blue-400 hover:text-blue-300 text-xs"><i class="fas fa-edit mr-1"></i>Edit</button>` : ''}
+                    ${canDelete ? `<button onclick='deleteUser(${u.ID}, "${escapeHtml(u.Username)}")' class="text-red-400 hover:text-red-300 text-xs"><i class="fas fa-trash mr-1"></i>Delete</button>` : ''}
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function showCreateModal() {
+    document.getElementById('createForm').reset();
+    document.getElementById('createError').classList.add('hidden');
+    document.getElementById('createModal').classList.remove('hidden');
+}
+function hideCreateModal() { document.getElementById('createModal').classList.add('hidden'); }
+
+document.getElementById('createForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const errorEl = document.getElementById('createError');
+    errorEl.classList.add('hidden');
+    const body = {
+        username: form.username.value,
+        email: form.email.value,
+        password: form.password.value,
+        role: form.role.value,
+    };
+    const res = await fetch('/api/admin/users', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (res.ok) { hideCreateModal(); loadUsers(); }
+    else { const data = await res.json(); errorEl.textContent = data.detail || 'Failed'; errorEl.classList.remove('hidden'); }
+});
+
+function editUser(u) {
+    document.getElementById('editUserId').value = u.ID;
+    document.getElementById('editUsername').textContent = u.Username;
+    document.getElementById('editEmail').value = u.Email;
+    document.getElementById('editPassword').value = '';
+    document.getElementById('editActive').checked = u.Active;
+    document.getElementById('editError').classList.add('hidden');
+    // Hide role field for superadmin
+    if (u.Role === 'superadmin') {
+        document.getElementById('editRoleGroup').classList.add('hidden');
+    } else {
+        document.getElementById('editRoleGroup').classList.remove('hidden');
+        document.getElementById('editRoleSelect').value = u.Role;
+    }
+    document.getElementById('editModal').classList.remove('hidden');
+}
+function hideEditModal() { document.getElementById('editModal').classList.add('hidden'); }
+
+document.getElementById('editForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const errorEl = document.getElementById('editError');
+    errorEl.classList.add('hidden');
+    const userId = document.getElementById('editUserId').value;
+    const body = {};
+    if (form.email.value) body.email = form.email.value;
+    if (form.password.value) body.password = form.password.value;
+    if (!document.getElementById('editRoleGroup').classList.contains('hidden')) {
+        body.role = form.role.value;
+    }
+    body.active = form.active.checked;
+    const res = await fetch(`/api/admin/users/${userId}`, {
+        method: 'PUT', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (res.ok) { hideEditModal(); loadUsers(); }
+    else { const data = await res.json(); errorEl.textContent = data.detail || 'Failed'; errorEl.classList.remove('hidden'); }
+});
+
+async function deleteUser(id, username) {
+    if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+    const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+    if (res.ok) { loadUsers(); }
+    else { const data = await res.json(); alert(data.detail || 'Failed to delete'); }
+}
+
+function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+loadUsers();
+</script>
+</main>
+</body>
+</html>

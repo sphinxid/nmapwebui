@@ -1,230 +1,143 @@
 # NmapWebUI
 
-A web-based application that serves as a user-friendly wrapper for the Nmap network scanner. This application allows authenticated users to manage targets, define and execute Nmap scans, view scan reports, and schedule recurring scans through an intuitive web interface.
+A modern web-based frontend for Nmap built with **Go**, **Gin**, **GORM**, **Redis**, and **robfig/cron**.
 
-## Features
+## Architecture Overview
 
-- **User Authentication & Authorization** - secure login system with role-based access
-- **User Management** - admin interface for managing user accounts
-- **Target Group Management** - organize and manage scan targets efficiently
-- **Scan Task Creation & Configuration** - flexible scan configuration with custom Nmap options
-- **Asynchronous Background Scanning** - non-blocking scan execution using a built-in scheduler
-- **Task Listing & Management** - monitor and control running and queued scans
-- **Scan Report Display** - comprehensive visualization of scan results
-- **Multiple Scan Runs & Report History** - track scan history and compare results over time
-- **Scheduled Scanning** - automated recurring scans with configurable intervals
+| Layer | Technology |
+|-------|------------|
+| Web Framework | Gin |
+| Task Queue | Redis (BRPOP) |
+| Scheduler | robfig/cron |
+| Database | SQLite via GORM |
+| Auth | JWT + bcrypt |
+| Frontend | Go html/template + Tailwind CSS |
+| Live Updates | Server-Sent Events (SSE) via Redis pub/sub |
+| Nmap Execution | os/exec subprocess |
 
-## Prerequisites
+## Project Structure
 
-- Python 3.8 or higher
-- Nmap installed on the system
-- (Optional) Gunicorn or uWSGI for production deployment
-- (Optional) The User running the application should have sudo access without a password for Nmap commands requiring root privileges
-
-## Manual Installation & Setup
-
-### 1. Clone the Repository
-
-```bash
-git clone <repository-url>
-cd nmapwebui
+```
+nmapwebui/
+├── cmd/
+│   ├── server/main.go      # HTTP server entrypoint
+│   └── worker/main.go      # Background worker entrypoint
+├── internal/
+│   ├── config/             # Configuration (env vars)
+│   ├── db/                 # GORM database init + migrations
+│   ├── models/             # GORM models
+│   ├── middleware/         # JWT auth middleware
+│   ├── handlers/           # HTTP handlers (auth, targets, scans, reports, admin, SSE)
+│   ├── services/           # Business logic (nmap, locking, reports)
+│   └── scheduler/          # Cron-based schedule checker
+├── templates/              # Go html/template + Tailwind frontend
+├── Dockerfile              # Multi-stage build
+├── docker-compose.yml      # Server + Worker + Redis
+├── Makefile                # Build/run shortcuts
+└── go.mod
 ```
 
-### 2. Create Virtual Environment
-
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-### 3. Install Dependencies
-
-```bash
-apt-get install -y --no-install-recommends nmap libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libpangocairo-1.0-0
-```
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Configure Environment Variables
-
-```bash
-cp .env.example .env
-```
-
-Edit the `.env` file with your configuration:
-
-```bash
-# Flask configuration
-FLASK_APP=run_app.py
-FLASK_ENV=development
-SECRET_KEY=your-secret-key
-
-# Database configuration (use absolute path)
-DATABASE_URL=sqlite:////home/user/nmapwebui/instance/app.db
-
-# Worker configuration
-NMAP_WORKER_POOL_SIZE=4
-
-# Nmap configuration
-NMAP_REPORTS_DIR=/home/user/nmapwebui/instance/reports
-
-# Server configuration
-FLASK_HOST=0.0.0.0
-FLASK_PORT=5000
-```
-
-### 5. Initialize Database
-
-```bash
-flask db init
-flask db migrate -m "Initial migration"
-flask db upgrade
-```
-
-### 6. Create Admin User
-
-```bash
-python create_admin.py
-```
-
-## Running the Application Manually
-
-The application now runs as a single process, managing the web server, background workers, and scheduler internally.
-
-### 1. Start Flask Application
-
-```bash
-python run_app.py
-```
-
-The application will be accessible at `http://127.0.0.1:5000` (or the URL shown in the console).
-
-## Docker Deployment
-
-The application includes Docker support with automated service management using Supervisor.
+## Quick Start
 
 ### Prerequisites
 
-- Docker installed on your system
-- Docker Compose (usually included with Docker Desktop)
+- Go 1.22+
+- Redis
+- Nmap installed on the system
+- GCC (for SQLite CGO)
 
-### Configuration for Docker
-
-Create and configure your `.env` file (you can copy from `.env.docker.example`):
-
-```bash
-cp .env.docker.example .env
-```
-
-**Important Docker-specific configuration:**
+### Local Development
 
 ```bash
-# Database - path inside a container with a volume mount
-DATABASE_URL=sqlite:////app/instance/app.db
+# 1. Copy environment config
+cp .env.example .env
 
-# Worker configuration
-NMAP_WORKER_POOL_SIZE=4
+# 2. Start Redis
+redis-server
 
-# Reports directory - mounted volume path
-NMAP_REPORTS_DIR=/app/instance/reports
+# 3. Build and run the server
+make run
 
-# Optional: Auto-create admin user on first run (password minimum 8 characters)
-ADMIN_USER=admin
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=your-secure-password-min-8-chars
-
-# Other required variables
-SECRET_KEY=your-secret-key
-FLASK_HOST=0.0.0.0
-FLASK_PORT=51234
+# 4. In another terminal, start the worker
+make worker
 ```
 
-### Building and Running with Docker
+The server starts at http://localhost:8080. Register a user at `/register`.
 
-#### Option 1: Using Docker Compose (Recommended)
+### Docker Compose
 
 ```bash
-docker compose up -d
+# Starts Redis, Web Server, and Worker
+docker compose up -d --build
 ```
 
-This will:
-- Build the application image
-- Start the NmapWebUI application with all services managed by Supervisor
-- Expose the application on `http://localhost:51234`
+Access at http://localhost:8080.
 
-#### Option 2: Manual Docker Build and Run
+## Key Features
 
-Build the image:
+### Scan Profiles
+Built-in profiles: `quick_scan`, `intense_scan`, `ping_scan`, `service_scan`, `os_detection`, `comprehensive`, plus custom argument support.
 
-```bash
-docker build -t nmapwebui .
+### Scheduler (robfig/cron + Redis Locks)
+- Supports **daily**, **weekly**, **monthly**, and **interval** schedules
+- Exactly-once execution via **Redis distributed locks**
+- Schedule checker runs every 60 seconds
+- Window-based deduplication prevents duplicate triggers
+
+### Concurrency Control / Duplicate Prevention
+Two layers of locking prevent race conditions:
+1. **Redis lock** (`nmapwebui:lock:task:{task_id}`) — ensures only one worker runs a given task at a time
+2. **DB state check** — `queued`/`running` scan runs block new ad-hoc runs
+
+### Live Updates (SSE)
+Connect to `/api/sse/scans/:run_id/events` for real-time progress:
+- `progress` events from nmap `--stats-every` parsing
+- `status` events (starting, running, completed, failed)
+- Heartbeat keepalive for connection stability
+
+### Report Management
+Nmap outputs saved as:
+- **XML** (`-oX`) — parsed into structured Host/Port findings
+- **Normal text** (`-oN`) — raw output for download
+
+### Authentication
+- JWT access tokens (cookie + Bearer header)
+- Role-based access (`user` / `admin`)
+- Password hashing with bcrypt
+
+## API Endpoints
+
+| Prefix | Description |
+|--------|-------------|
+| `/api/auth` | Login, register, logout |
+| `/api/targets` | CRUD for target groups & hosts |
+| `/api/scans` | Scan tasks & runs (profiles, triggers) |
+| `/api/schedules` | Enable/disable scheduled scanning |
+| `/api/reports` | View reports, download XML/TXT |
+| `/api/admin` | Admin stats & user listing |
+| `/api/sse` | Server-Sent Events for live scan progress |
+
+## Configuration
+
+Set via `.env` file or environment variables:
+
+```env
+SECRET_KEY=change-me-in-production
+DATABASE_URL=instance/app.db
+REDIS_URL=redis://localhost:6379/0
+NMAP_REPORTS_DIR=instance/reports
+DEBUG=false
+ACCESS_TOKEN_EXPIRE_MINUTES=120
+NMAP_WORKER_POOL_SIZE=2
 ```
 
-Run the container:
+## Security Notes
 
-```bash
-docker run -d \
-  --name nmapwebui-container \
-  -p 51234:51234 \
-  --env-file .env \
-  nmapwebui
-```
-
-### Managing the Docker Container
-
-#### View logs:
-
-```bash
-# All logs
-docker logs nmapwebui-container
-
-# Follow logs in real-time
-docker logs -f nmapwebui-container
-
-# Using Docker Compose
-docker compose logs -f
-```
-
-#### Stop the application:
-
-```bash
-# Docker Compose
-docker compose down
-
-# Manual container
-docker stop nmapwebui-container
-```
-
-#### Restart services:
-
-```bash
-# Docker Compose
-docker compose restart
-
-# Manual container
-docker restart nmapwebui-container
-```
-
-## Usage
-
-1. **Access the web interface** at the configured URL
-2. **Log in** with your admin credentials
-3. **Add target groups** to organize your scan targets
-4. **Create scan tasks** with custom Nmap configurations
-5. **Execute scans** manually or schedule them for automatic execution
-6. **View results** in the comprehensive report interface
-7. **Manage users** through the admin interface (if you have admin privileges)
-
-## Architecture
-
-The application consists of several components:
-
-- **Flask Web Application** - main web interface and API
-- **APScheduler** - handles background scan execution and manages scheduled tasks
-- **SQLite Database** - stores application data (users, targets, scan configurations, results)
+- Nmap arguments are passed as a list to `exec.Command` to avoid shell injection
+- Custom arguments should still be validated at the UI layer
+- Passwordless sudo may be required for privileged scans (`-O`, `-sS`, etc.)
+- The Docker containers use `NET_RAW` and `NET_ADMIN` capabilities for raw packet scans
 
 ## License
 
-MIT License
+MIT

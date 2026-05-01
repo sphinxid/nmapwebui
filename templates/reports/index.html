@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+{{template "nav" .}}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="mb-6">
+    <h1 class="text-2xl font-bold">Scan Reports</h1>
+    <p class="text-gray-400 text-sm mt-1">View and download scan results in multiple formats</p>
+</div>
+<div id="reportsContainer" class="space-y-4">
+    <div class="text-center text-gray-500 py-8">Loading reports...</div>
+</div>
+
+<script>
+async function loadReports() {
+    const res = await fetch('/api/reports/', { credentials: 'same-origin' });
+    if (!res.ok) { document.getElementById('reportsContainer').innerHTML = '<div class="text-red-400 text-center">Failed to load</div>'; return; }
+    const reports = await res.json();
+    const container = document.getElementById('reportsContainer');
+    if (reports.length === 0) {
+        container.innerHTML = '<div class="bg-gray-800 rounded-lg p-12 text-center"><i class="fas fa-file-alt text-4xl text-gray-600 mb-3"></i><p class="text-gray-500">No reports yet. Run a scan to generate one.</p></div>';
+        return;
+    }
+    container.innerHTML = reports.map(r => {
+        const hostCount = (r.Hosts || []).length;
+        const openPorts = (r.Hosts || []).flatMap(h => h.Ports || []).filter(p => p.State === 'open').length;
+        return `
+        <div class="bg-gray-800 rounded-lg border border-gray-700 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow hover:border-gray-600 transition">
+            <a href="/reports/${r.ID}" class="flex-1 group">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-emerald-900/50 border border-emerald-800/50 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-file-shield text-emerald-400"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold group-hover:text-emerald-400 transition">Report #${r.ID}</h3>
+                        <p class="text-sm text-gray-400">${hostCount} host${hostCount !== 1 ? 's' : ''} &bull; ${openPorts} open port${openPorts !== 1 ? 's' : ''} &bull; ${r.CreatedAt ? new Date(r.CreatedAt).toLocaleDateString() + ' ' + new Date(r.CreatedAt).toLocaleTimeString() : '-'}</p>
+                    </div>
+                </div>
+            </a>
+            <div class="flex flex-wrap gap-2">
+                <a href="/reports/${r.ID}" class="inline-flex items-center bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-eye mr-1.5"></i>View</a>
+                <a href="/api/reports/${r.ID}/download/xml" class="inline-flex items-center bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-code mr-1.5"></i>XML</a>
+                <a href="/api/reports/${r.ID}/download/txt" class="inline-flex items-center bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-file-alt mr-1.5"></i>TXT</a>
+                <a href="/api/reports/${r.ID}/download/pdf" class="inline-flex items-center bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-file-pdf mr-1.5"></i>PDF</a>
+            </div>
+        </div>`;
+    }).join('');
+}
+loadReports();
+</script>
+</main>
+</body>
+</html>
