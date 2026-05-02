@@ -6,20 +6,68 @@
 <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold">Scan Tasks</h1>
-    <a href="/tasks/create" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition"><i class="fas fa-plus mr-2"></i>New Task</a>
+    <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1">
+            <span class="text-xs text-gray-500 mr-1">Per page:</span>
+            <button onclick="setPerPage(20)" data-pp="20" class="pp-btn px-2 py-0.5 rounded text-xs border border-emerald-500 bg-emerald-900 text-emerald-300">20</button>
+            <button onclick="setPerPage(50)" data-pp="50" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">50</button>
+            <button onclick="setPerPage(100)" data-pp="100" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">100</button>
+            <button onclick="setPerPage(500)" data-pp="500" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">500</button>
+        </div>
+        <a href="/tasks/create" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition"><i class="fas fa-plus mr-2"></i>New Task</a>
+    </div>
 </div>
 <div id="tasksContainer" class="space-y-4">
     <div class="text-center text-gray-500 py-8">Loading tasks...</div>
 </div>
 
+<div id="paginationControls" class="hidden flex items-center justify-between mt-4">
+    <span class="text-sm text-gray-400" id="pageInfo"></span>
+    <div class="flex items-center gap-2">
+        <button onclick="goPage(currentPage-1)" id="prevBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Prev</button>
+        <span class="text-sm text-gray-400" id="pageNums"></span>
+        <button onclick="goPage(currentPage+1)" id="nextBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Next</button>
+    </div>
+</div>
+
 <script>
+let currentPage = 1;
+let perPage = 20;
+let totalPages = 1;
+
+function setPerPage(n) {
+    perPage = n;
+    currentPage = 1;
+    document.querySelectorAll('.pp-btn').forEach(b => {
+        const active = parseInt(b.dataset.pp) === n;
+        b.className = 'pp-btn px-2 py-0.5 rounded text-xs border ' + (active ? 'border-emerald-500 bg-emerald-900 text-emerald-300' : 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600');
+    });
+    loadTasks();
+}
+function goPage(p) { if (p >= 1 && p <= totalPages) { currentPage = p; loadTasks(); } }
+
+function updatePagination(data) {
+    totalPages = data.pages;
+    const controls = document.getElementById('paginationControls');
+    if (data.total <= data.per_page && data.page === 1) { controls.classList.add('hidden'); return; }
+    controls.classList.remove('hidden');
+    const start = (data.page - 1) * data.per_page + 1;
+    const end = Math.min(data.page * data.per_page, data.total);
+    document.getElementById('pageInfo').textContent = `Showing ${start}-${end} of ${data.total}`;
+    document.getElementById('pageNums').textContent = `Page ${data.page} of ${data.pages}`;
+    document.getElementById('prevBtn').disabled = data.page <= 1;
+    document.getElementById('nextBtn').disabled = data.page >= data.pages;
+}
+
 async function loadTasks() {
-    const res = await fetch('/api/scans/tasks', { credentials: 'same-origin' });
+    const res = await fetch(`/api/scans/tasks?page=${currentPage}&per_page=${perPage}`, { credentials: 'same-origin' });
     if (!res.ok) { document.getElementById('tasksContainer').innerHTML = '<div class="text-red-400 text-center">Failed to load tasks</div>'; return; }
-    const tasks = await res.json();
+    const data = await res.json();
+    const tasks = data.items || [];
     const container = document.getElementById('tasksContainer');
-    if (tasks.length === 0) {
+    if (tasks.length === 0 && data.total === 0) {
         container.innerHTML = '<div class="text-gray-500 text-center py-8">No scan tasks yet. <a href="/tasks/create" class="text-emerald-400 hover:underline">Create one</a>.</div>';
+        document.getElementById('paginationControls').classList.add('hidden');
         return;
     }
     container.innerHTML = tasks.map(t => `
@@ -35,6 +83,7 @@ async function loadTasks() {
             </div>
         </div>
     `).join('');
+    updatePagination(data);
 }
 async function runTask(id) {
     const res = await fetch(`/api/scans/tasks/${id}/run`, { method: 'POST', credentials: 'same-origin' });

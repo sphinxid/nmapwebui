@@ -48,9 +48,10 @@ async function loadProfiles() {
     profiles.forEach(p => { const opt = document.createElement('option'); opt.value = p.name; opt.textContent = `${p.name} (${p.nmap_args})`; select.appendChild(opt); });
 }
 async function loadTargetGroups() {
-    const res = await fetch('/api/targets/', { credentials: 'same-origin' });
+    const res = await fetch('/api/targets?per_page=500', { credentials: 'same-origin' });
     if (!res.ok) return;
-    const groups = await res.json();
+    const data = await res.json();
+    const groups = data.items || [];
     const container = document.getElementById('targetGroups');
     if (groups.length === 0) { container.innerHTML = '<div class="text-gray-500 text-sm">No target groups. <a href="/targets" class="text-emerald-400 hover:underline">Create one first</a>.</div>'; return; }
     container.innerHTML = groups.map(g => `

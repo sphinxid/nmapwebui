@@ -22,9 +22,16 @@ type TargetGroupInput struct {
 func ListTargetGroups(c *gin.Context) {
 	user, _ := c.Get("user")
 	u := user.(models.User)
+	page, perPage := parsePagination(c)
+
+	var total int64
+	db.DB.Model(&models.TargetGroup{}).Where("user_id = ?", u.ID).Count(&total)
+
 	var groups []models.TargetGroup
-	db.DB.Preload("Targets").Where("user_id = ?", u.ID).Find(&groups)
-	c.JSON(http.StatusOK, groups)
+	db.DB.Preload("Targets").Where("user_id = ?", u.ID).
+		Order("id DESC").Offset(offset(page, perPage)).Limit(perPage).Find(&groups)
+
+	c.JSON(http.StatusOK, paginatedResponse(groups, total, page, perPage))
 }
 
 func CreateTargetGroup(c *gin.Context) {

@@ -10,9 +10,18 @@
             <h1 class="text-2xl font-bold">User Management</h1>
             <p class="text-gray-400 text-sm mt-1">Create and manage user accounts</p>
         </div>
-        <button onclick="showCreateModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition">
-            <i class="fas fa-user-plus mr-2"></i>Add User
-        </button>
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1">
+                <span class="text-xs text-gray-500 mr-1">Per page:</span>
+                <button onclick="setPerPage(20)" data-pp="20" class="pp-btn px-2 py-0.5 rounded text-xs border border-emerald-500 bg-emerald-900 text-emerald-300">20</button>
+                <button onclick="setPerPage(50)" data-pp="50" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">50</button>
+                <button onclick="setPerPage(100)" data-pp="100" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">100</button>
+                <button onclick="setPerPage(500)" data-pp="500" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">500</button>
+            </div>
+            <button onclick="showCreateModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition">
+                <i class="fas fa-user-plus mr-2"></i>Add User
+            </button>
+        </div>
     </div>
 
     <div class="bg-gray-800 rounded-lg shadow border border-gray-700 overflow-hidden">
@@ -31,6 +40,15 @@
                     <tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <div id="paginationControls" class="hidden flex items-center justify-between mt-4">
+        <span class="text-sm text-gray-400" id="pageInfo"></span>
+        <div class="flex items-center gap-2">
+            <button onclick="goPage(currentPage-1)" id="prevBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Prev</button>
+            <span class="text-sm text-gray-400" id="pageNums"></span>
+            <button onclick="goPage(currentPage+1)" id="nextBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Next</button>
         </div>
     </div>
 </div>
@@ -113,6 +131,34 @@ const myRole = '{{if .User}}{{.User.Role}}{{end}}';
 const myId = {{if .User}}{{.User.ID}}{{else}}0{{end}};
 const isSuperAdmin = myRole === 'superadmin';
 
+let currentPage = 1;
+let perPage = 20;
+let totalPages = 1;
+
+function setPerPage(n) {
+    perPage = n;
+    currentPage = 1;
+    document.querySelectorAll('.pp-btn').forEach(b => {
+        const active = parseInt(b.dataset.pp) === n;
+        b.className = 'pp-btn px-2 py-0.5 rounded text-xs border ' + (active ? 'border-emerald-500 bg-emerald-900 text-emerald-300' : 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600');
+    });
+    loadUsers();
+}
+function goPage(p) { if (p >= 1 && p <= totalPages) { currentPage = p; loadUsers(); } }
+
+function updatePagination(data) {
+    totalPages = data.pages;
+    const controls = document.getElementById('paginationControls');
+    if (data.total <= data.per_page && data.page === 1) { controls.classList.add('hidden'); return; }
+    controls.classList.remove('hidden');
+    const start = (data.page - 1) * data.per_page + 1;
+    const end = Math.min(data.page * data.per_page, data.total);
+    document.getElementById('pageInfo').textContent = `Showing ${start}-${end} of ${data.total}`;
+    document.getElementById('pageNums').textContent = `Page ${data.page} of ${data.pages}`;
+    document.getElementById('prevBtn').disabled = data.page <= 1;
+    document.getElementById('nextBtn').disabled = data.page >= data.pages;
+}
+
 // Populate role dropdowns based on caller's role
 if (isSuperAdmin) {
     document.getElementById('createRoleSelect').innerHTML = '<option value="user">User</option><option value="admin">Admin</option>';
@@ -120,11 +166,12 @@ if (isSuperAdmin) {
 }
 
 async function loadUsers() {
-    const res = await fetch('/api/admin/users', { credentials: 'same-origin' });
+    const res = await fetch(`/api/admin/users?page=${currentPage}&per_page=${perPage}`, { credentials: 'same-origin' });
     if (!res.ok) { document.getElementById('usersBody').innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-red-400">Failed to load</td></tr>'; return; }
-    const users = await res.json();
+    const data = await res.json();
+    const users = data.items || [];
     const tbody = document.getElementById('usersBody');
-    if (!users || users.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No users</td></tr>'; return; }
+    if (!users || users.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No users</td></tr>'; document.getElementById('paginationControls').classList.add('hidden'); return; }
     tbody.innerHTML = users.map(u => {
         const roleBadge = u.Role === 'superadmin' ? 'bg-purple-900 text-purple-300 border-purple-700'
             : u.Role === 'admin' ? 'bg-amber-900 text-amber-300 border-amber-700'
@@ -155,6 +202,7 @@ async function loadUsers() {
             </td>
         </tr>`;
     }).join('');
+    updatePagination(data);
 }
 
 function showCreateModal() {

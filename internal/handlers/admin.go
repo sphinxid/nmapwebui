@@ -10,9 +10,14 @@ import (
 )
 
 func ListUsers(c *gin.Context) {
+	page, perPage := parsePagination(c)
+
+	var total int64
+	db.DB.Model(&models.User{}).Count(&total)
+
 	var users []models.User
-	db.DB.Find(&users)
-	// Strip password hashes from response
+	db.DB.Order("id ASC").Offset(offset(page, perPage)).Limit(perPage).Find(&users)
+
 	type SafeUser struct {
 		ID       uint   `json:"ID"`
 		Username string `json:"Username"`
@@ -27,7 +32,7 @@ func ListUsers(c *gin.Context) {
 			Role: u.Role, Active: u.Active,
 		})
 	}
-	c.JSON(http.StatusOK, safe)
+	c.JSON(http.StatusOK, paginatedResponse(safe, total, page, perPage))
 }
 
 func GetStats(c *gin.Context) {

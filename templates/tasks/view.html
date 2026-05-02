@@ -202,7 +202,16 @@
 
     <!-- Scan Runs Table -->
     <div class="bg-gray-800 rounded-lg shadow overflow-hidden mb-6">
-        <div class="px-6 py-4 border-b border-gray-700"><h3 class="text-lg font-semibold">Scan Runs</h3></div>
+        <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+            <h3 class="text-lg font-semibold">Scan Runs</h3>
+            <div class="flex items-center gap-1">
+                <span class="text-xs text-gray-500 mr-1">Per page:</span>
+                <button onclick="setRunsPerPage(20)" data-rpp="20" class="rpp-btn px-2 py-0.5 rounded text-xs border border-emerald-500 bg-emerald-900 text-emerald-300">20</button>
+                <button onclick="setRunsPerPage(50)" data-rpp="50" class="rpp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">50</button>
+                <button onclick="setRunsPerPage(100)" data-rpp="100" class="rpp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">100</button>
+                <button onclick="setRunsPerPage(500)" data-rpp="500" class="rpp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">500</button>
+            </div>
+        </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left">
                 <thead class="bg-gray-700 text-gray-300 text-sm uppercase">
@@ -218,6 +227,14 @@
                 <tbody id="runsBody" class="divide-y divide-gray-700"><tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr></tbody>
             </table>
         </div>
+        <div id="runsPaginationControls" class="hidden flex items-center justify-between px-6 py-3 border-t border-gray-700">
+            <span class="text-sm text-gray-400" id="runsPageInfo"></span>
+            <div class="flex items-center gap-2">
+                <button onclick="goRunsPage(runsCurrentPage-1)" id="runsPrevBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Prev</button>
+                <span class="text-sm text-gray-400" id="runsPageNums"></span>
+                <button onclick="goRunsPage(runsCurrentPage+1)" id="runsNextBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Next</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -226,6 +243,25 @@ const taskId = window.location.pathname.split('/').pop();
 let currentTask = null;
 let selectedFrequency = null;
 let selectedDays = new Set();
+
+// Runs pagination (client-side)
+let allRuns = [];
+let runsCurrentPage = 1;
+let runsPerPage = 20;
+
+function setRunsPerPage(n) {
+    runsPerPage = n;
+    runsCurrentPage = 1;
+    document.querySelectorAll('.rpp-btn').forEach(b => {
+        const active = parseInt(b.dataset.rpp) === n;
+        b.className = 'rpp-btn px-2 py-0.5 rounded text-xs border ' + (active ? 'border-emerald-500 bg-emerald-900 text-emerald-300' : 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600');
+    });
+    renderRunsPage();
+}
+function goRunsPage(p) {
+    const totalRunPages = Math.max(1, Math.ceil(allRuns.length / runsPerPage));
+    if (p >= 1 && p <= totalRunPages) { runsCurrentPage = p; renderRunsPage(); }
+}
 
 // Populate dropdowns
 function populateSelect(id, start, end, padFn) {
@@ -388,11 +424,24 @@ async function loadTask() {
 }
 
 function renderRuns(runs) {
+    allRuns = (runs || []).slice().sort((a, b) => (b.ID || 0) - (a.ID || 0));
+    renderRunsPage();
+}
+
+function renderRunsPage() {
     const tbody = document.getElementById('runsBody');
-    if (runs.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No runs yet</td></tr>'; return; }
-    // Sort by ID descending so newest runs appear first
-    runs.sort((a, b) => (b.ID || 0) - (a.ID || 0));
-    tbody.innerHTML = runs.map(r => {
+    if (allRuns.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No runs yet</td></tr>';
+        document.getElementById('runsPaginationControls').classList.add('hidden');
+        return;
+    }
+    const total = allRuns.length;
+    const totalRunPages = Math.max(1, Math.ceil(total / runsPerPage));
+    if (runsCurrentPage > totalRunPages) runsCurrentPage = totalRunPages;
+    const start = (runsCurrentPage - 1) * runsPerPage;
+    const pageRuns = allRuns.slice(start, start + runsPerPage);
+
+    tbody.innerHTML = pageRuns.map(r => {
         const hasReport = r.Report && r.Report.ID;
         const reportId = hasReport ? r.Report.ID : null;
         return `
@@ -418,6 +467,15 @@ function renderRuns(runs) {
             </td>
         </tr>`;
     }).join('');
+
+    // Update runs pagination controls
+    const controls = document.getElementById('runsPaginationControls');
+    if (total <= runsPerPage) { controls.classList.add('hidden'); return; }
+    controls.classList.remove('hidden');
+    document.getElementById('runsPageInfo').textContent = `Showing ${start + 1}-${Math.min(start + runsPerPage, total)} of ${total}`;
+    document.getElementById('runsPageNums').textContent = `Page ${runsCurrentPage} of ${totalRunPages}`;
+    document.getElementById('runsPrevBtn').disabled = runsCurrentPage <= 1;
+    document.getElementById('runsNextBtn').disabled = runsCurrentPage >= totalRunPages;
 }
 
 function statusBadge(status) {
@@ -445,7 +503,7 @@ let allTargetGroups = [];
 async function loadEditData() {
     const [profRes, tgRes] = await Promise.all([
         fetch('/api/scans/profiles', { credentials: 'same-origin' }),
-        fetch('/api/targets/', { credentials: 'same-origin' }),
+        fetch('/api/targets?per_page=500', { credentials: 'same-origin' }),
     ]);
     if (profRes.ok) {
         allProfiles = await profRes.json();
@@ -459,7 +517,8 @@ async function loadEditData() {
         });
     }
     if (tgRes.ok) {
-        allTargetGroups = await tgRes.json();
+        const tgData = await tgRes.json();
+        allTargetGroups = tgData.items || [];
     }
 }
 loadEditData();

@@ -18,12 +18,20 @@ import (
 func ListReports(c *gin.Context) {
 	user, _ := c.Get("user")
 	u := user.(models.User)
+	page, perPage := parsePagination(c)
+
+	var total int64
+	db.DB.Model(&models.ScanReport{}).Joins("JOIN scan_runs ON scan_runs.id = scan_reports.scan_run_id").
+		Joins("JOIN scan_tasks ON scan_tasks.id = scan_runs.task_id").
+		Where("scan_tasks.user_id = ?", u.ID).Count(&total)
 
 	var reports []models.ScanReport
 	db.DB.Preload("Hosts.Ports").Joins("JOIN scan_runs ON scan_runs.id = scan_reports.scan_run_id").
 		Joins("JOIN scan_tasks ON scan_tasks.id = scan_runs.task_id").
-		Where("scan_tasks.user_id = ?", u.ID).Find(&reports)
-	c.JSON(http.StatusOK, reports)
+		Where("scan_tasks.user_id = ?", u.ID).
+		Order("scan_reports.id DESC").Offset(offset(page, perPage)).Limit(perPage).Find(&reports)
+
+	c.JSON(http.StatusOK, paginatedResponse(reports, total, page, perPage))
 }
 
 func GetReport(c *gin.Context) {

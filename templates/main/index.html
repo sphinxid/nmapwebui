@@ -65,18 +65,19 @@
 <script>
 async function loadDashboard() {
     const [tasksRes, reportsRes] = await Promise.all([
-        fetch('/api/scans/tasks', { credentials: 'same-origin' }),
-        fetch('/api/reports/', { credentials: 'same-origin' })
+        fetch('/api/scans/tasks?per_page=500', { credentials: 'same-origin' }),
+        fetch('/api/reports?per_page=1', { credentials: 'same-origin' })
     ]);
     if (!tasksRes.ok) return;
-    const tasks = await tasksRes.json();
-    document.getElementById('totalTasks').textContent = tasks.length;
+    const tasksData = await tasksRes.json();
+    const tasks = tasksData.items || [];
+    document.getElementById('totalTasks').textContent = tasksData.total || tasks.length;
     document.getElementById('runningScans').textContent = tasks.filter(t =>
         t.ScanRuns && t.ScanRuns.some(r => r.Status === 'running')
     ).length;
     if (reportsRes.ok) {
-        const reports = await reportsRes.json();
-        document.getElementById('totalReports').textContent = reports.length;
+        const reportsData = await reportsRes.json();
+        document.getElementById('totalReports').textContent = reportsData.total || 0;
     }
     // Recent runs from tasks
     const tbody = document.getElementById('recentRunsBody');

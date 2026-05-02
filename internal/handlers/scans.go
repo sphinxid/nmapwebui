@@ -34,9 +34,16 @@ func ListScanProfiles(c *gin.Context) {
 func ListScanTasks(c *gin.Context) {
 	user, _ := c.Get("user")
 	u := user.(models.User)
+	page, perPage := parsePagination(c)
+
+	var total int64
+	db.DB.Model(&models.ScanTask{}).Where("user_id = ?", u.ID).Count(&total)
+
 	var tasks []models.ScanTask
-	db.DB.Preload("TargetGroups").Preload("ScanRuns").Where("user_id = ?", u.ID).Find(&tasks)
-	c.JSON(http.StatusOK, tasks)
+	db.DB.Preload("TargetGroups").Preload("ScanRuns").Where("user_id = ?", u.ID).
+		Order("id DESC").Offset(offset(page, perPage)).Limit(perPage).Find(&tasks)
+
+	c.JSON(http.StatusOK, paginatedResponse(tasks, total, page, perPage))
 }
 
 func CreateScanTask(c *gin.Context) {
