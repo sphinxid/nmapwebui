@@ -1,6 +1,6 @@
-.PHONY: build run worker clean test vet docker-up docker-down
+.PHONY: build run worker clean test vet deploy restart logs down
 
-# Build both binaries
+# Build both binaries locally
 build:
 	CGO_ENABLED=1 go build -o bin/server ./cmd/server
 	CGO_ENABLED=1 go build -o bin/worker ./cmd/worker
@@ -25,10 +25,28 @@ test:
 clean:
 	rm -rf bin/
 
-# Docker compose up
-docker-up:
-	docker compose up -d --build
+# Deploy: rebuild images and restart (uses layer cache - fast when only code changed)
+deploy:
+	sudo docker-compose build
+	sudo docker-compose up -d
 
-# Docker compose down
-docker-down:
-	docker compose down
+# Force full rebuild (slow - only needed when Dockerfile or deps change)
+deploy-full:
+	sudo docker-compose build --no-cache
+	sudo docker-compose up -d
+
+# Restart containers without rebuilding (instant - for config/env changes only)
+restart:
+	sudo docker-compose restart
+
+# View logs
+logs:
+	sudo docker-compose logs -f --tail=50
+
+# Stop containers (preserves data volumes)
+down:
+	sudo docker-compose down
+
+# Stop containers AND delete data (destructive!)
+down-clean:
+	sudo docker-compose down -v

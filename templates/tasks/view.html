@@ -61,7 +61,10 @@
     <!-- Schedule Section -->
     <div class="bg-gray-800 rounded-lg shadow overflow-hidden mb-6">
         <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
-            <h3 class="text-lg font-semibold"><i class="fas fa-clock mr-2 text-amber-400"></i>Schedule</h3>
+            <div class="flex items-center gap-4">
+                <h3 class="text-lg font-semibold"><i class="fas fa-clock mr-2 text-amber-400"></i>Schedule</h3>
+                <span class="text-xs text-gray-500 font-mono" id="serverClock">loading...</span>
+            </div>
             <div id="scheduleStatus"></div>
         </div>
         <div class="p-6">
@@ -119,7 +122,7 @@
                             <select id="dailyHour" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
                             <span class="text-gray-500">:</span>
                             <select id="dailyMinute" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
-                            <span class="text-sm text-gray-400">UTC</span>
+                            <span class="text-sm text-gray-400">Server Time</span>
                         </div>
                     </div>
                 </div>
@@ -144,7 +147,7 @@
                             <select id="weeklyHour" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
                             <span class="text-gray-500">:</span>
                             <select id="weeklyMinute" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
-                            <span class="text-sm text-gray-400">UTC</span>
+                            <span class="text-sm text-gray-400">Server Time</span>
                         </div>
                     </div>
                 </div>
@@ -161,7 +164,7 @@
                             <select id="monthlyHour" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
                             <span class="text-gray-500">:</span>
                             <select id="monthlyMinute" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
-                            <span class="text-sm text-gray-400">UTC</span>
+                            <span class="text-sm text-gray-400">Server Time</span>
                         </div>
                     </div>
                 </div>
@@ -319,9 +322,9 @@ function describeCron(type, data, expr) {
             const [min, hour, dom, mon, dow] = parts;
             // Try to give a human-readable description
             if (dom === '*' && mon === '*' && dow === '*' && hour.startsWith('*/')) return `Every ${hour.slice(2)} hours at :${min.padStart(2,'0')}`;
-            if (dom === '*' && mon === '*' && dow === '*' && hour !== '*') return `Daily at ${hour.padStart(2,'0')}:${min.padStart(2,'0')} UTC`;
-            if (dom === '*' && mon === '*' && dow !== '*') { const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const days = dow.split(',').map(d => dayNames[+d] || d).join(', '); return `Weekly on ${days} at ${hour.padStart(2,'0')}:${min.padStart(2,'0')} UTC`; }
-            if (mon === '*' && dow === '*' && dom !== '*') return `Monthly on day ${dom} at ${hour.padStart(2,'0')}:${min.padStart(2,'0')} UTC`;
+            if (dom === '*' && mon === '*' && dow === '*' && hour !== '*') return `Daily at ${hour.padStart(2,'0')}:${min.padStart(2,'0')} Server Time`;
+            if (dom === '*' && mon === '*' && dow !== '*') { const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const days = dow.split(',').map(d => dayNames[+d] || d).join(', '); return `Weekly on ${days} at ${hour.padStart(2,'0')}:${min.padStart(2,'0')} Server Time`; }
+            if (mon === '*' && dow === '*' && dom !== '*') return `Monthly on day ${dom} at ${hour.padStart(2,'0')}:${min.padStart(2,'0')} Server Time`;
         }
         return `Cron: ${expr}`;
     }
@@ -460,6 +463,34 @@ async function loadEditData() {
     }
 }
 loadEditData();
+
+// Live server clock
+let serverOffset = 0; // ms difference: serverTime - clientTime
+let serverTZ = '';
+async function syncServerTime() {
+    try {
+        const res = await fetch('/api/server-time');
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverNow = new Date(data.time).getTime();
+        serverOffset = serverNow - Date.now();
+        serverTZ = data.timezone || '';
+    } catch(e) {}
+}
+function updateServerClock() {
+    const now = new Date(Date.now() + serverOffset);
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const mo = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const label = serverTZ && serverTZ !== 'Local' ? ` (${serverTZ})` : '';
+    document.getElementById('serverClock').textContent = `Server: ${yyyy}-${mo}-${dd} ${hh}:${mm}:${ss}${label}`;
+}
+syncServerTime().then(() => { updateServerClock(); setInterval(updateServerClock, 1000); });
+// Re-sync every 5 minutes to stay accurate
+setInterval(syncServerTime, 300000);
 
 function showEditModal() {
     if (!currentTask) return;

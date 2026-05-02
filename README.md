@@ -62,16 +62,38 @@ make run
 make worker
 ```
 
-The server starts at http://localhost:8080. Register a user at `/register`.
+The server starts at http://localhost:8080. Log in with the superadmin credentials from `.env`.
 
 ### Docker Compose
 
 ```bash
 # Starts Redis, Web Server, and Worker
-docker compose up -d --build
+make deploy
+
+# View logs
+make logs
 ```
 
 Access at http://localhost:8080.
+
+### Makefile Commands
+
+| Command | Description |
+|---------|-------------|
+| `make deploy` | Build with layer cache and restart (fast for code-only changes) |
+| `make deploy-full` | Full rebuild without cache (needed when Dockerfile changes) |
+| `make restart` | Restart containers without rebuilding |
+| `make logs` | Tail container logs |
+| `make down` | Stop containers, **preserves database and reports** |
+| `make down-clean` | Stop containers **and delete all data** (volumes removed) |
+
+### Data Persistence
+
+The database (`app.db`) and scan reports are stored in a Docker volume (`app_data`).
+This data persists across `make deploy`, `make down`, and container restarts.
+
+**To preserve data**: always use `make down` (runs `docker-compose down`).
+**To reset everything**: use `make down-clean` (runs `docker-compose down -v`).
 
 ## Key Features
 

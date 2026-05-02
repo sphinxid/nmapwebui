@@ -58,6 +58,13 @@ func main() {
 		api.GET("/health", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"status": "ok", "app": cfg.AppName})
 		})
+		api.GET("/server-time", func(c *gin.Context) {
+			now := time.Now()
+			c.JSON(http.StatusOK, gin.H{
+				"time":     now.Format("2006-01-02T15:04:05Z07:00"),
+				"timezone": now.Location().String(),
+			})
+		})
 
 		api.POST("/auth/login", handlers.Login(cfg))
 		api.POST("/auth/logout", handlers.Logout())
