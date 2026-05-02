@@ -40,7 +40,8 @@ func GetReport(c *gin.Context) {
 	u := user.(models.User)
 
 	var report models.ScanReport
-	if err := db.DB.Preload("Hosts.Ports").Joins("JOIN scan_runs ON scan_runs.id = scan_reports.scan_run_id").
+	if err := db.DB.Preload("Hosts.Ports").Preload("ScanRun.Task").
+		Joins("JOIN scan_runs ON scan_runs.id = scan_reports.scan_run_id").
 		Joins("JOIN scan_tasks ON scan_tasks.id = scan_runs.task_id").
 		Where("scan_reports.id = ? AND scan_tasks.user_id = ?", id, u.ID).First(&report).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Report not found"})

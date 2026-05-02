@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+{{template "nav" .}}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-bold">All Scan Runs</h1>
+        <p class="text-gray-400 text-sm mt-1">History of all scan executions across tasks</p>
+    </div>
+    <div class="flex items-center gap-3">
+        <select id="statusFilter" onchange="filterChanged()" class="bg-gray-700 border border-gray-600 text-gray-300 text-xs rounded px-2 py-1 focus:ring-emerald-500 focus:border-emerald-500">
+            <option value="">All statuses</option>
+            <option value="running">Running</option>
+            <option value="queued">Queued</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+        </select>
+        <div class="flex items-center gap-1">
+            <span class="text-xs text-gray-500 mr-1">Per page:</span>
+            <button onclick="setPerPage(20)" data-pp="20" class="pp-btn px-2 py-0.5 rounded text-xs border border-emerald-500 bg-emerald-900 text-emerald-300">20</button>
+            <button onclick="setPerPage(50)" data-pp="50" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">50</button>
+            <button onclick="setPerPage(100)" data-pp="100" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">100</button>
+            <button onclick="setPerPage(500)" data-pp="500" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">500</button>
+        </div>
+    </div>
+</div>
+
+<div class="bg-gray-800 rounded-lg shadow overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full text-left">
+            <thead class="bg-gray-700 text-gray-300 text-sm uppercase">
+                <tr>
+                    <th class="px-6 py-3">ID</th>
+                    <th class="px-6 py-3">Task</th>
+                    <th class="px-6 py-3">Status</th>
+                    <th class="px-6 py-3">Progress</th>
+                    <th class="px-6 py-3">Started</th>
+                    <th class="px-6 py-3">Completed</th>
+                    <th class="px-6 py-3">Report</th>
+                    <th class="px-6 py-3"></th>
+                </tr>
+            </thead>
+            <tbody id="runsBody" class="divide-y divide-gray-700">
+                <tr><td colspan="8" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="paginationControls" class="hidden flex items-center justify-between mt-4">
+    <span class="text-sm text-gray-400" id="pageInfo"></span>
+    <div class="flex items-center gap-2">
+        <button onclick="goPage(currentPage-1)" id="prevBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Prev</button>
+        <span class="text-sm text-gray-400" id="pageNums"></span>
+        <button onclick="goPage(currentPage+1)" id="nextBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Next</button>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let perPage = 20;
+let totalPages = 1;
+
+function setPerPage(n) {
+    perPage = n;
+    currentPage = 1;
+    document.querySelectorAll('.pp-btn').forEach(b => {
+        const active = parseInt(b.dataset.pp) === n;
+        b.className = 'pp-btn px-2 py-0.5 rounded text-xs border ' + (active ? 'border-emerald-500 bg-emerald-900 text-emerald-300' : 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600');
+    });
+    loadRuns();
+}
+function filterChanged() { currentPage = 1; loadRuns(); }
+function goPage(p) { if (p >= 1 && p <= totalPages) { currentPage = p; loadRuns(); } }
+
+function updatePagination(data) {
+    totalPages = data.pages;
+    const controls = document.getElementById('paginationControls');
+    if (data.total <= data.per_page && data.page === 1) { controls.classList.add('hidden'); return; }
+    controls.classList.remove('hidden');
+    const start = (data.page - 1) * data.per_page + 1;
+    const end = Math.min(data.page * data.per_page, data.total);
+    document.getElementById('pageInfo').textContent = `Showing ${start}-${end} of ${data.total}`;
+    document.getElementById('pageNums').textContent = `Page ${data.page} of ${data.pages}`;
+    document.getElementById('prevBtn').disabled = data.page <= 1;
+    document.getElementById('nextBtn').disabled = data.page >= data.pages;
+}
+
+function statusBadge(status) {
+    const colors = { queued: 'bg-gray-700 text-gray-300', running: 'bg-amber-900 text-amber-300', completed: 'bg-emerald-900 text-emerald-300', failed: 'bg-red-900 text-red-300' };
+    return `<span class="px-2 py-1 rounded text-xs font-medium ${colors[status] || colors.queued}">${status}</span>`;
+}
+function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+async function loadRuns() {
+    const status = document.getElementById('statusFilter').value;
+    let url = `/api/scans/runs?page=${currentPage}&per_page=${perPage}`;
+    if (status) url += `&status=${status}`;
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) { document.getElementById('runsBody').innerHTML = '<tr><td colspan="8" class="px-6 py-4 text-center text-red-400">Failed to load</td></tr>'; return; }
+    const data = await res.json();
+    const runs = data.items || [];
+    const tbody = document.getElementById('runsBody');
+    if (runs.length === 0 && data.total === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="px-6 py-8 text-center text-gray-500">No scan runs found</td></tr>';
+        document.getElementById('paginationControls').classList.add('hidden');
+        return;
+    }
+    tbody.innerHTML = runs.map(r => {
+        const taskName = r.Task ? escapeHtml(r.Task.Name) : '-';
+        const taskId = r.Task ? r.Task.ID : r.TaskID;
+        const reportLink = r.Report ? `<a href="/reports/${r.Report.ID}" class="text-emerald-400 hover:underline text-xs">#${r.Report.ID}</a>` : '<span class="text-gray-500 text-xs">-</span>';
+        const liveLink = (r.Status === 'running' || r.Status === 'queued') ? `<a href="/tasks/run/${r.ID}" class="text-amber-400 hover:underline text-xs"><i class="fas fa-broadcast-tower mr-1"></i>Live</a>` : '';
+        return `<tr class="hover:bg-gray-700/30 transition-colors">
+            <td class="px-6 py-3 text-sm font-mono text-gray-400">${r.ID}</td>
+            <td class="px-6 py-3 text-sm"><a href="/tasks/view/${taskId}" class="text-emerald-400 hover:underline">${taskName}</a></td>
+            <td class="px-6 py-3 text-sm">${statusBadge(r.Status)}</td>
+            <td class="px-6 py-3 text-sm">
+                <div class="w-full bg-gray-700 rounded-full h-2"><div class="bg-emerald-500 h-2 rounded-full" style="width: ${r.Progress || 0}%"></div></div>
+                <span class="text-xs text-gray-400">${r.Progress || 0}%</span>
+            </td>
+            <td class="px-6 py-3 text-sm text-gray-400">${r.StartedAt ? new Date(r.StartedAt).toLocaleString() : '-'}</td>
+            <td class="px-6 py-3 text-sm text-gray-400">${r.CompletedAt ? new Date(r.CompletedAt).toLocaleString() : '-'}</td>
+            <td class="px-6 py-3 text-sm">${reportLink}</td>
+            <td class="px-6 py-3 text-sm">${liveLink}</td>
+        </tr>`;
+    }).join('');
+    updatePagination(data);
+}
+loadRuns();
+</script>
+</main>
+</body>
+</html>

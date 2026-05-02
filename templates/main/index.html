@@ -39,10 +39,35 @@
     </div>
 </div>
 
+<!-- Active Scans Table (only shown when there are running/queued scans) -->
+<div id="activeScansSection" class="mb-8 hidden">
+    <div class="bg-gray-800 rounded-lg shadow overflow-hidden border border-amber-900/50">
+        <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+            <h3 class="text-lg font-semibold"><i class="fas fa-bolt text-amber-400 mr-2"></i>Active Scans</h3>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-gray-700 text-gray-300 text-sm uppercase">
+                    <tr>
+                        <th class="px-6 py-3">Run ID</th>
+                        <th class="px-6 py-3">Task</th>
+                        <th class="px-6 py-3">Status</th>
+                        <th class="px-6 py-3">Progress</th>
+                        <th class="px-6 py-3">Started</th>
+                        <th class="px-6 py-3"></th>
+                    </tr>
+                </thead>
+                <tbody id="activeScansBody" class="divide-y divide-gray-700"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Scan Runs -->
 <div class="bg-gray-800 rounded-lg shadow overflow-hidden">
     <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
         <h3 class="text-lg font-semibold">Recent Scan Runs</h3>
-        <a href="/tasks" class="text-emerald-400 text-sm hover:underline">View All</a>
+        <a href="/runs" class="text-emerald-400 text-sm hover:underline">View More &rarr;</a>
     </div>
     <div class="overflow-x-auto">
         <table class="w-full text-left">
@@ -72,23 +97,50 @@ async function loadDashboard() {
     const tasksData = await tasksRes.json();
     const tasks = tasksData.items || [];
     document.getElementById('totalTasks').textContent = tasksData.total || tasks.length;
-    document.getElementById('runningScans').textContent = tasks.filter(t =>
-        t.ScanRuns && t.ScanRuns.some(r => r.Status === 'running')
-    ).length;
+
+    // Collect all runs with task name
+    const allRuns = tasks.flatMap(t => (t.ScanRuns || []).map(r => ({...r, taskName: t.Name, taskId: t.ID})));
+    const activeRuns = allRuns.filter(r => r.Status === 'running' || r.Status === 'queued');
+
+    document.getElementById('runningScans').textContent = activeRuns.filter(r => r.Status === 'running').length;
+
     if (reportsRes.ok) {
         const reportsData = await reportsRes.json();
         document.getElementById('totalReports').textContent = reportsData.total || 0;
     }
-    // Recent runs from tasks
+
+    // Active scans table
+    const activeSection = document.getElementById('activeScansSection');
+    const activeBody = document.getElementById('activeScansBody');
+    if (activeRuns.length > 0) {
+        activeSection.classList.remove('hidden');
+        activeBody.innerHTML = activeRuns.sort((a,b) => (b.ID || 0) - (a.ID || 0)).map(r => `
+            <tr class="hover:bg-gray-700/30 transition-colors">
+                <td class="px-6 py-3 text-sm font-mono text-gray-400">${r.ID}</td>
+                <td class="px-6 py-3 text-sm"><a href="/tasks/view/${r.taskId}" class="text-emerald-400 hover:underline">${escapeHtml(r.taskName)}</a></td>
+                <td class="px-6 py-3 text-sm">${statusBadge(r.Status)}</td>
+                <td class="px-6 py-3 text-sm">
+                    <div class="w-full bg-gray-700 rounded-full h-2"><div class="bg-amber-500 h-2 rounded-full transition-all" style="width: ${r.Progress || 0}%"></div></div>
+                    <span class="text-xs text-gray-400">${r.Progress || 0}%</span>
+                </td>
+                <td class="px-6 py-3 text-sm text-gray-400">${r.StartedAt ? new Date(r.StartedAt).toLocaleString() : '-'}</td>
+                <td class="px-6 py-3 text-sm"><a href="/tasks/run/${r.ID}" class="inline-flex items-center text-amber-400 hover:text-amber-300 text-xs font-medium"><i class="fas fa-broadcast-tower mr-1"></i>Live</a></td>
+            </tr>
+        `).join('');
+    } else {
+        activeSection.classList.add('hidden');
+    }
+
+    // Recent runs (top 10)
+    const recentRuns = allRuns.sort((a,b) => (b.ID || 0) - (a.ID || 0)).slice(0, 10);
     const tbody = document.getElementById('recentRunsBody');
-    const allRuns = tasks.flatMap(t => (t.ScanRuns || []).map(r => ({...r, taskName: t.Name}))).sort((a,b) => (b.ID || 0) - (a.ID || 0)).slice(0, 5);
-    if (allRuns.length === 0) {
+    if (recentRuns.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">No runs yet</td></tr>';
         return;
     }
-    tbody.innerHTML = allRuns.map(r => `
-        <tr>
-            <td class="px-6 py-3 text-sm">${escapeHtml(r.taskName)}</td>
+    tbody.innerHTML = recentRuns.map(r => `
+        <tr class="hover:bg-gray-700/30 transition-colors">
+            <td class="px-6 py-3 text-sm"><a href="/tasks/view/${r.taskId}" class="text-emerald-400 hover:underline">${escapeHtml(r.taskName)}</a></td>
             <td class="px-6 py-3 text-sm">${statusBadge(r.Status)}</td>
             <td class="px-6 py-3 text-sm">
                 <div class="w-full bg-gray-700 rounded-full h-2"><div class="bg-emerald-500 h-2 rounded-full" style="width: ${r.Progress || 0}%"></div></div>

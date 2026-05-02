@@ -90,9 +90,12 @@ func ExecuteScan(ctx context.Context, runID, taskID uint, cfg *config.Config) er
 	}
 
 	pid := cmd.Process.Pid
-	db.DB.Model(&models.ScanRun{}).Where("id = ?", runID).Updates(map[string]interface{}{
-		"status": "running", "started_at": time.Now(), "nmap_pid": pid,
-	})
+	now := time.Now()
+	if err := db.DB.Model(&models.ScanRun{}).Where("id = ?", runID).Updates(map[string]interface{}{
+		"status": "running", "started_at": now, "nmap_p_id": pid,
+	}).Error; err != nil {
+		fmt.Fprintf(os.Stderr, "[nmap] Run %d: failed to update started_at/pid: %v\n", runID, err)
+	}
 
 	publish(ctx, runID, "status", map[string]interface{}{
 		"status": "running", "pid": pid,
