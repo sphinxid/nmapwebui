@@ -24,20 +24,31 @@ func main() {
 	}
 
 	rdb := services.InitRedis(cfg.RedisURL)
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	queueKey := services.ScanQueueKey()
 
-	fmt.Println("Worker started, waiting for scan jobs...")
+	poolSize := cfg.NmapWorkerPoolSize
+	if poolSize < 1 {
+		poolSize = 1
+	}
+
+	fmt.Printf("Worker started with pool size %d, waiting for scan jobs...\n", poolSize)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
+	// Semaphore to limit concurrent scans
+	sem := make(chan struct{}, poolSize)
+
 	go func() {
 		for {
-			result, err := rdb.BRPop(ctx, 0, queueKey).Result()
+			result, err := rdb.BRPop(ctx, 5*time.Second, queueKey).Result()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Queue error: %v\n", err)
-				time.Sleep(2 * time.Second)
+				if ctx.Err() != nil {
+					return
+				}
+				// BRPop timeout is normal, just retry
 				continue
 			}
 			if len(result) < 2 {
@@ -54,22 +65,30 @@ func main() {
 				continue
 			}
 
-			lockKey := services.ScanLockKey(run.TaskID)
-			token, ok := services.AcquireLock(ctx, lockKey, time.Hour)
-			if !ok {
-				fmt.Printf("Run %d: could not acquire lock for task %d\n", runID, run.TaskID)
-				db.DB.Model(&run).Update("status", "failed")
-				continue
-			}
+			// Acquire a pool slot (blocks if all workers busy)
+			sem <- struct{}{}
 
-			fmt.Printf("Starting scan run %d (task %d)\n", runID, run.TaskID)
-			if err := services.ExecuteScan(ctx, uint(runID), run.TaskID, cfg); err != nil {
-				fmt.Fprintf(os.Stderr, "Scan error: %v\n", err)
-			}
-			services.ReleaseLock(ctx, lockKey, token)
+			go func(run models.ScanRun, runID uint64) {
+				defer func() { <-sem }()
+
+				lockKey := services.ScanLockKey(run.TaskID)
+				token, ok := services.AcquireLock(ctx, lockKey, time.Hour)
+				if !ok {
+					fmt.Printf("Run %d: could not acquire lock for task %d\n", runID, run.TaskID)
+					db.DB.Model(&run).Update("status", "failed")
+					return
+				}
+
+				fmt.Printf("Starting scan run %d (task %d)\n", runID, run.TaskID)
+				if err := services.ExecuteScan(ctx, uint(runID), run.TaskID, cfg); err != nil {
+					fmt.Fprintf(os.Stderr, "Scan run %d error: %v\n", runID, err)
+				}
+				services.ReleaseLock(ctx, lockKey, token)
+			}(run, runID)
 		}
 	}()
 
 	<-quit
 	fmt.Println("Worker shutting down...")
+	cancel()
 }
