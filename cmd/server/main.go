@@ -14,6 +14,7 @@ import (
 	"nmapwebui/internal/db"
 	"nmapwebui/internal/handlers"
 	"nmapwebui/internal/middleware"
+	"nmapwebui/internal/models"
 	"nmapwebui/internal/scheduler"
 	"nmapwebui/internal/services"
 )
@@ -60,10 +61,20 @@ func main() {
 		})
 		api.GET("/server-time", func(c *gin.Context) {
 			now := time.Now()
-			c.JSON(http.StatusOK, gin.H{
+			resp := gin.H{
 				"time":     now.Format("2006-01-02T15:04:05Z07:00"),
 				"timezone": now.Location().String(),
-			})
+			}
+			// Include the user's timezone so the frontend can show local time
+			if u, exists := c.Get("user"); exists {
+				if user, ok := u.(models.User); ok && user.Timezone != "" {
+					resp["user_timezone"] = user.Timezone
+					if loc, err := time.LoadLocation(user.Timezone); err == nil {
+						resp["user_time"] = now.In(loc).Format("2006-01-02T15:04:05Z07:00")
+					}
+				}
+			}
+			c.JSON(http.StatusOK, resp)
 		})
 
 		api.POST("/auth/login", handlers.Login(cfg))

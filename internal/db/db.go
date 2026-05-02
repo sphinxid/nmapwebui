@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
@@ -32,12 +33,24 @@ func Init(cfg *config.Config, seed bool) (*gorm.DB, error) {
 		logLevel = logger.Info
 	}
 
+	// Enable WAL mode and set a busy timeout so concurrent access from the
+	// server and worker processes doesn't fail with SQLITE_BUSY.
+	if !strings.Contains(dsn, "?") {
+		dsn += "?_journal_mode=WAL&_busy_timeout=5000"
+	} else {
+		dsn += "&_journal_mode=WAL&_busy_timeout=5000"
+	}
+
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logLevel),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
+
+	// Enforce WAL mode at the connection level (some drivers ignore DSN pragmas)
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
 
 	if err := db.AutoMigrate(
 		&models.User{},
@@ -54,6 +67,12 @@ func Init(cfg *config.Config, seed bool) (*gorm.DB, error) {
 	}
 
 	DB = db
+
+	// Backfill schedule_last_run for existing scheduled tasks that have
+	// a NULL value (i.e. the column was just added by AutoMigrate).
+	// Set it to now so they don't all fire immediately on upgrade.
+	db.Exec("UPDATE scan_tasks SET schedule_last_run = ? WHERE is_scheduled = 1 AND schedule_last_run IS NULL", time.Now().UTC())
+
 	if seed {
 		seedSuperAdmin(cfg)
 	}

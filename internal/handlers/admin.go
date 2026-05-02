@@ -36,14 +36,14 @@ func ListUsers(c *gin.Context) {
 }
 
 func GetStats(c *gin.Context) {
-	var totalUsers, totalRuns, runningRuns int64
+	var totalUsers, totalRuns, activeRuns int64
 	db.DB.Model(&models.User{}).Count(&totalUsers)
 	db.DB.Model(&models.ScanRun{}).Count(&totalRuns)
-	db.DB.Model(&models.ScanRun{}).Where("status = ?", "running").Count(&runningRuns)
+	db.DB.Model(&models.ScanRun{}).Where("status = ?", "running").Count(&activeRuns)
 	c.JSON(http.StatusOK, gin.H{
 		"total_users":       totalUsers,
 		"total_scan_runs":   totalRuns,
-		"running_scan_runs": runningRuns,
+		"running_scan_runs": activeRuns,
 	})
 }
 

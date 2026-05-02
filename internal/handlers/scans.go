@@ -184,10 +184,10 @@ func RunScanTask(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Check if already running
-		var count int64
-		db.DB.Model(&models.ScanRun{}).Where("task_id = ? AND status IN ?", task.ID, []string{"queued", "running"}).Count(&count)
-		if count > 0 {
+		// Block if a scan is already queued or running for this task
+		var activeCount int64
+		db.DB.Model(&models.ScanRun{}).Where("task_id = ? AND status IN ?", task.ID, []string{"queued", "running"}).Count(&activeCount)
+		if activeCount > 0 {
 			c.JSON(http.StatusConflict, gin.H{"detail": "A scan for this task is already queued or running"})
 			return
 		}
@@ -196,8 +196,7 @@ func RunScanTask(cfg *config.Config) gin.HandlerFunc {
 		db.DB.Create(&run)
 
 		// Push to Redis queue for worker
-		job, _ := services.GetRedis().LPush(c.Request.Context(), services.ScanQueueKey(), run.ID).Result()
-		_ = job
+		services.GetRedis().LPush(c.Request.Context(), services.ScanQueueKey(), run.ID)
 
 		c.JSON(http.StatusOK, run)
 	}
