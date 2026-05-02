@@ -1,55 +1,31 @@
-# Use Python 3.9 slim image on Debian Bookworm
-FROM python:3.9-slim-bookworm
+# Build stage
+FROM golang:1.22-bookworm AS builder
 
-# Set PYTHONUNBUFFERED to 1 to ensure print statements are sent straight to terminal
-ENV PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libsqlite3-dev && rm -rf /var/lib/apt/lists/*
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends nmap libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libpangocairo-1.0-0 sudo supervisor
+WORKDIR /build
 
-# Clean up apt cache
-RUN rm -rf /var/lib/apt/lists/*
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Create a non-root user and group
-RUN groupadd -r appgroup &&     useradd -r -g appgroup -d /home/appuser -s /bin/bash -m appuser &&     chown -R appuser:appgroup /home/appuser
-
-# Setup sudo for the user
-RUN echo "appuser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/appuser-nopasswd && \
-    chmod 0440 /etc/sudoers.d/appuser-nopasswd
-
-# Set working directory
-WORKDIR /app
-
-# Copy requirements.txt and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the entire application source code into /app
-# This includes entrypoint.sh which should be in the project root before this copy
 COPY . .
 
-# Make entrypoint.sh executable, it's now at /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+RUN CGO_ENABLED=1 GOOS=linux go build -o server ./cmd/server
+RUN CGO_ENABLED=1 GOOS=linux go build -o worker ./cmd/worker
 
-# Change ownership of /app to appuser:appgroup
-RUN chown -R appuser:appgroup /app
+# Runtime stage
+FROM debian:bookworm-slim
 
-# Create log directory for supervisor
-RUN mkdir -p /var/log/supervisor &&     chown -R appuser:appgroup /var/log/supervisor
+RUN apt-get update && apt-get install -y --no-install-recommends nmap ca-certificates libsqlite3-0 wkhtmltopdf && rm -rf /var/lib/apt/lists/*
 
-# Copy supervisor configuration (supervisord.conf should be in the project root before this copy)
-# It will be copied to /app/supervisord.conf, then the next line copies it to the correct location.
-# A bit redundant, could optimize by copying directly: COPY supervisord.conf /etc/supervisor/conf.d/
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+WORKDIR /app
 
-# Expose port
-EXPOSE 51234
+COPY --from=builder /build/server /app/server
+COPY --from=builder /build/worker /app/worker
+COPY --from=builder /build/templates /app/templates
 
-# Define entrypoint (entrypoint.sh is now in /app/entrypoint.sh)
-ENTRYPOINT ["/app/entrypoint.sh"]
+RUN mkdir -p /app/instance/reports
 
-# Switch to non-root user
-USER appuser
+EXPOSE 8080
 
-# Set default command
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+CMD ["/app/server"]

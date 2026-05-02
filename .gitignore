@@ -1,0 +1,8 @@
+bin/
+instance/
+venv/
+graphify-out/
+.devin/
+.env
+*.db
+.*.swp

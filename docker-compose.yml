@@ -1,15 +1,59 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  nmapwebui:
-    build: .
-    container_name: nmapwebui-container
+  redis:
+    image: redis:7-alpine
     ports:
-      - "51234:51234" # Maps host port 51234 to container port 51234
-    env_file:
-      - .env # Loads environment variables from your .env file
-    #volumes:
-    #  - ./instance:/app/instance # Mounts your host's instance directory
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  server:
+    build: .
+    command: /app/server
+    ports:
+      - "8080:8080"
     environment:
-      # REDIS_HOST and REDIS_PORT removed as Redis is no longer used
-      FLASK_ENV: development # Example: you might want to set other env vars here
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - DATABASE_URL=/app/instance/app.db
+      - REDIS_URL=redis://redis:6379/0
+      - NMAP_REPORTS_DIR=/app/instance/reports
+      - DEBUG=${DEBUG:-false}
+      - SUPERADMIN_USERNAME=${SUPERADMIN_USERNAME:-admin}
+      - SUPERADMIN_PASSWORD=${SUPERADMIN_PASSWORD:-admin}
+      - SUPERADMIN_EMAIL=${SUPERADMIN_EMAIL:-admin@localhost}
+    volumes:
+      - app_data:/app/instance
+    depends_on:
+      redis:
+        condition: service_healthy
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+
+  worker:
+    build: .
+    command: /app/worker
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - DATABASE_URL=/app/instance/app.db
+      - REDIS_URL=redis://redis:6379/0
+      - NMAP_REPORTS_DIR=/app/instance/reports
+      - DEBUG=${DEBUG:-false}
+    volumes:
+      - app_data:/app/instance
+    depends_on:
+      redis:
+        condition: service_healthy
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+
+volumes:
+  redis_data:
+  app_data:

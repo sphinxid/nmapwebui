@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+{{template "nav" .}}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="mb-8">
+    <h1 class="text-3xl font-bold">Dashboard</h1>
+    <p class="text-gray-400 mt-1">Overview of your scan activity</p>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <div class="bg-gray-800 rounded-lg p-6 shadow">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm text-gray-400">Total Tasks</p>
+                <p class="text-3xl font-bold text-emerald-400" id="totalTasks">-</p>
+            </div>
+            <i class="fas fa-crosshairs text-3xl text-gray-600"></i>
+        </div>
+    </div>
+    <div class="bg-gray-800 rounded-lg p-6 shadow">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm text-gray-400">Running Scans</p>
+                <p class="text-3xl font-bold text-amber-400" id="runningScans">-</p>
+            </div>
+            <i class="fas fa-spinner text-3xl text-gray-600 fa-spin" style="animation-duration: 2s;"></i>
+        </div>
+    </div>
+    <div class="bg-gray-800 rounded-lg p-6 shadow">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm text-gray-400">Completed Reports</p>
+                <p class="text-3xl font-bold text-blue-400" id="totalReports">-</p>
+            </div>
+            <i class="fas fa-file-alt text-3xl text-gray-600"></i>
+        </div>
+    </div>
+</div>
+
+<div class="bg-gray-800 rounded-lg shadow overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+        <h3 class="text-lg font-semibold">Recent Scan Runs</h3>
+        <a href="/tasks" class="text-emerald-400 text-sm hover:underline">View All</a>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-left">
+            <thead class="bg-gray-700 text-gray-300 text-sm uppercase">
+                <tr>
+                    <th class="px-6 py-3">Task</th>
+                    <th class="px-6 py-3">Status</th>
+                    <th class="px-6 py-3">Progress</th>
+                    <th class="px-6 py-3">Started</th>
+                </tr>
+            </thead>
+            <tbody id="recentRunsBody" class="divide-y divide-gray-700">
+                <tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+</main>
+
+<script>
+async function loadDashboard() {
+    const [tasksRes, reportsRes] = await Promise.all([
+        fetch('/api/scans/tasks?per_page=500', { credentials: 'same-origin' }),
+        fetch('/api/reports?per_page=1', { credentials: 'same-origin' })
+    ]);
+    if (!tasksRes.ok) return;
+    const tasksData = await tasksRes.json();
+    const tasks = tasksData.items || [];
+    document.getElementById('totalTasks').textContent = tasksData.total || tasks.length;
+    document.getElementById('runningScans').textContent = tasks.filter(t =>
+        t.ScanRuns && t.ScanRuns.some(r => r.Status === 'running')
+    ).length;
+    if (reportsRes.ok) {
+        const reportsData = await reportsRes.json();
+        document.getElementById('totalReports').textContent = reportsData.total || 0;
+    }
+    // Recent runs from tasks
+    const tbody = document.getElementById('recentRunsBody');
+    const allRuns = tasks.flatMap(t => (t.ScanRuns || []).map(r => ({...r, taskName: t.Name}))).sort((a,b) => (b.ID || 0) - (a.ID || 0)).slice(0, 5);
+    if (allRuns.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">No runs yet</td></tr>';
+        return;
+    }
+    tbody.innerHTML = allRuns.map(r => `
+        <tr>
+            <td class="px-6 py-3 text-sm">${escapeHtml(r.taskName)}</td>
+            <td class="px-6 py-3 text-sm">${statusBadge(r.Status)}</td>
+            <td class="px-6 py-3 text-sm">
+                <div class="w-full bg-gray-700 rounded-full h-2"><div class="bg-emerald-500 h-2 rounded-full" style="width: ${r.Progress || 0}%"></div></div>
+                <span class="text-xs text-gray-400">${r.Progress || 0}%</span>
+            </td>
+            <td class="px-6 py-3 text-sm text-gray-400">${r.StartedAt ? new Date(r.StartedAt).toLocaleString() : '-'}</td>
+        </tr>
+    `).join('');
+}
+function statusBadge(status) {
+    const colors = { queued: 'bg-gray-700 text-gray-300', running: 'bg-amber-900 text-amber-300', completed: 'bg-emerald-900 text-emerald-300', failed: 'bg-red-900 text-red-300' };
+    return `<span class="px-2 py-1 rounded text-xs font-medium ${colors[status] || colors.queued}">${status}</span>`;
+}
+function escapeHtml(text) {
+    const div = document.createElement('div'); div.textContent = text; return div.innerHTML;
+}
+loadDashboard();
+setInterval(loadDashboard, 10000);
+</script>
+</body>
+</html>

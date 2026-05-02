@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+{{template "nav" .}}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div id="taskView" class="max-w-5xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold" id="taskName">...</h1>
+            <p class="text-gray-400 text-sm" id="taskMeta">...</p>
+        </div>
+        <div class="space-x-2">
+            <button onclick="showEditModal()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm font-medium transition"><i class="fas fa-edit mr-2"></i>Edit</button>
+            <button onclick="runTask()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition"><i class="fas fa-play mr-2"></i>Run Now</button>
+            <button onclick="deleteTask()" class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm transition" title="Delete Task"><i class="fas fa-trash"></i></button>
+        </div>
+    </div>
+
+    <!-- Edit Task Modal -->
+    <div id="editModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-800 rounded-lg shadow-xl border border-gray-700 w-full max-w-lg mx-4 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold">Edit Task</h2>
+                <button onclick="hideEditModal()" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="editForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Name</label>
+                    <input type="text" id="editName" required class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Description</label>
+                    <textarea id="editDescription" rows="2" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Scan Profile</label>
+                    <select id="editProfile" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+                        <option value="">Custom</option>
+                    </select>
+                </div>
+                <div id="editCustomArgsContainer">
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Custom Arguments</label>
+                    <input type="text" id="editCustomArgs" placeholder="-T4 -A -v" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Target Groups</label>
+                    <div id="editTargetGroups" class="space-y-2 max-h-40 overflow-y-auto bg-gray-700 rounded p-2">
+                        <div class="text-gray-500 text-sm">Loading...</div>
+                    </div>
+                </div>
+                <div id="editError" class="text-red-400 text-sm hidden"></div>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" onclick="hideEditModal()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm transition">Cancel</button>
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Schedule Section -->
+    <div class="bg-gray-800 rounded-lg shadow overflow-hidden mb-6">
+        <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <h3 class="text-lg font-semibold"><i class="fas fa-clock mr-2 text-amber-400"></i>Schedule</h3>
+                <span class="text-xs text-gray-500 font-mono" id="serverClock">loading...</span>
+            </div>
+            <div id="scheduleStatus"></div>
+        </div>
+        <div class="p-6">
+            <!-- Current schedule display -->
+            <div id="currentSchedule" class="hidden mb-4 p-4 bg-gray-900 rounded-lg border border-gray-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="text-sm text-gray-400">Active schedule:</span>
+                        <span id="scheduleDescription" class="ml-2 text-emerald-400 font-medium"></span>
+                        <div id="cronExpression" class="text-xs text-gray-500 mt-1 font-mono"></div>
+                    </div>
+                    <button onclick="removeSchedule()" class="text-red-400 hover:text-red-300 text-sm"><i class="fas fa-trash mr-1"></i>Remove</button>
+                </div>
+            </div>
+
+            <!-- Schedule form -->
+            <div id="scheduleForm">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Frequency</label>
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+                        <button onclick="setFrequency('hourly')" data-freq="hourly" class="freq-btn px-3 py-2 rounded text-sm border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300 transition text-center">Every N Hours</button>
+                        <button onclick="setFrequency('daily')" data-freq="daily" class="freq-btn px-3 py-2 rounded text-sm border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300 transition text-center">Daily</button>
+                        <button onclick="setFrequency('weekly')" data-freq="weekly" class="freq-btn px-3 py-2 rounded text-sm border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300 transition text-center">Weekly</button>
+                        <button onclick="setFrequency('monthly')" data-freq="monthly" class="freq-btn px-3 py-2 rounded text-sm border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300 transition text-center">Monthly</button>
+                        <button onclick="setFrequency('custom')" data-freq="custom" class="freq-btn px-3 py-2 rounded text-sm border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300 transition text-center">Custom Cron</button>
+                    </div>
+                </div>
+
+                <!-- Hourly options -->
+                <div id="opt-hourly" class="schedule-options hidden space-y-3">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Run every</label>
+                        <div class="flex items-center gap-2">
+                            <select id="hourlyInterval" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="6">6</option>
+                                <option value="8">8</option>
+                                <option value="12">12</option>
+                            </select>
+                            <span class="text-sm text-gray-400">hour(s) at minute</span>
+                            <select id="hourlyMinute" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500">
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daily options -->
+                <div id="opt-daily" class="schedule-options hidden space-y-3">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Run at</label>
+                        <div class="flex items-center gap-2">
+                            <select id="dailyHour" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
+                            <span class="text-gray-500">:</span>
+                            <select id="dailyMinute" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
+                            <span class="text-sm text-gray-400">Server Time</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Weekly options -->
+                <div id="opt-weekly" class="schedule-options hidden space-y-3">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Day of week</label>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="toggleDay(this,0)" data-day="0" class="day-btn px-3 py-1.5 rounded text-xs border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300 transition">Sun</button>
+                            <button onclick="toggleDay(this,1)" data-day="1" class="day-btn px-3 py-1.5 rounded text-xs border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300 transition">Mon</button>
+                            <button onclick="toggleDay(this,2)" data-day="2" class="day-btn px-3 py-1.5 rounded text-xs border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300 transition">Tue</button>
+                            <button onclick="toggleDay(this,3)" data-day="3" class="day-btn px-3 py-1.5 rounded text-xs border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300 transition">Wed</button>
+                            <button onclick="toggleDay(this,4)" data-day="4" class="day-btn px-3 py-1.5 rounded text-xs border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300 transition">Thu</button>
+                            <button onclick="toggleDay(this,5)" data-day="5" class="day-btn px-3 py-1.5 rounded text-xs border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300 transition">Fri</button>
+                            <button onclick="toggleDay(this,6)" data-day="6" class="day-btn px-3 py-1.5 rounded text-xs border border-gray-600 bg-gray-700 hover:bg-gray-600 text-gray-300 transition">Sat</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">At time</label>
+                        <div class="flex items-center gap-2">
+                            <select id="weeklyHour" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
+                            <span class="text-gray-500">:</span>
+                            <select id="weeklyMinute" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
+                            <span class="text-sm text-gray-400">Server Time</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Monthly options -->
+                <div id="opt-monthly" class="schedule-options hidden space-y-3">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Day of month</label>
+                        <select id="monthlyDay" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">At time</label>
+                        <div class="flex items-center gap-2">
+                            <select id="monthlyHour" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
+                            <span class="text-gray-500">:</span>
+                            <select id="monthlyMinute" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"></select>
+                            <span class="text-sm text-gray-400">Server Time</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Custom cron -->
+                <div id="opt-custom" class="schedule-options hidden space-y-3">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Cron expression <span class="text-gray-600">(minute hour day month weekday)</span></label>
+                        <input type="text" id="customCron" placeholder="0 2 * * *" class="w-full max-w-sm bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-emerald-500">
+                        <div class="mt-2 text-xs text-gray-500 space-y-0.5">
+                            <div><span class="text-gray-400 font-mono">0 2 * * *</span> &mdash; Every day at 02:00</div>
+                            <div><span class="text-gray-400 font-mono">0 */6 * * *</span> &mdash; Every 6 hours</div>
+                            <div><span class="text-gray-400 font-mono">30 3 * * 1</span> &mdash; Every Monday at 03:30</div>
+                            <div><span class="text-gray-400 font-mono">0 0 1 * *</span> &mdash; First day of month at midnight</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview + Save -->
+                <div id="scheduleActions" class="hidden mt-4 pt-4 border-t border-gray-700">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="text-sm text-gray-400">Cron:</span>
+                            <code id="cronPreview" class="ml-2 text-sm font-mono text-amber-400 bg-gray-900 px-2 py-1 rounded"></code>
+                        </div>
+                        <div class="space-x-2">
+                            <button onclick="saveSchedule()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition"><i class="fas fa-save mr-1"></i>Save Schedule</button>
+                        </div>
+                    </div>
+                    <div id="scheduleError" class="mt-2 text-red-400 text-sm hidden"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scan Runs Table -->
+    <div class="bg-gray-800 rounded-lg shadow overflow-hidden mb-6">
+        <div class="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+            <h3 class="text-lg font-semibold">Scan Runs</h3>
+            <div class="flex items-center gap-1">
+                <span class="text-xs text-gray-500 mr-1">Per page:</span>
+                <button onclick="setRunsPerPage(20)" data-rpp="20" class="rpp-btn px-2 py-0.5 rounded text-xs border border-emerald-500 bg-emerald-900 text-emerald-300">20</button>
+                <button onclick="setRunsPerPage(50)" data-rpp="50" class="rpp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">50</button>
+                <button onclick="setRunsPerPage(100)" data-rpp="100" class="rpp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">100</button>
+                <button onclick="setRunsPerPage(500)" data-rpp="500" class="rpp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">500</button>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-gray-700 text-gray-300 text-sm uppercase">
+                    <tr>
+                        <th class="px-6 py-3">ID</th>
+                        <th class="px-6 py-3">Status</th>
+                        <th class="px-6 py-3">Progress</th>
+                        <th class="px-6 py-3">Created</th>
+                        <th class="px-6 py-3">Reports</th>
+                        <th class="px-6 py-3"></th>
+                    </tr>
+                </thead>
+                <tbody id="runsBody" class="divide-y divide-gray-700"><tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr></tbody>
+            </table>
+        </div>
+        <div id="runsPaginationControls" class="hidden flex items-center justify-between px-6 py-3 border-t border-gray-700">
+            <span class="text-sm text-gray-400" id="runsPageInfo"></span>
+            <div class="flex items-center gap-2">
+                <button onclick="goRunsPage(runsCurrentPage-1)" id="runsPrevBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Prev</button>
+                <span class="text-sm text-gray-400" id="runsPageNums"></span>
+                <button onclick="goRunsPage(runsCurrentPage+1)" id="runsNextBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Next</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const taskId = window.location.pathname.split('/').pop();
+let currentTask = null;
+let selectedFrequency = null;
+let selectedDays = new Set();
+
+// Runs pagination (client-side)
+let allRuns = [];
+let runsCurrentPage = 1;
+let runsPerPage = 20;
+
+function setRunsPerPage(n) {
+    runsPerPage = n;
+    runsCurrentPage = 1;
+    document.querySelectorAll('.rpp-btn').forEach(b => {
+        const active = parseInt(b.dataset.rpp) === n;
+        b.className = 'rpp-btn px-2 py-0.5 rounded text-xs border ' + (active ? 'border-emerald-500 bg-emerald-900 text-emerald-300' : 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600');
+    });
+    renderRunsPage();
+}
+function goRunsPage(p) {
+    const totalRunPages = Math.max(1, Math.ceil(allRuns.length / runsPerPage));
+    if (p >= 1 && p <= totalRunPages) { runsCurrentPage = p; renderRunsPage(); }
+}
+
+// Populate dropdowns
+function populateSelect(id, start, end, padFn) {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = '';
+    for (let i = start; i <= end; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = padFn ? padFn(i) : i;
+        sel.appendChild(opt);
+    }
+}
+const pad2 = n => String(n).padStart(2, '0');
+// Hours 0-23, Minutes 0-59
+['dailyHour','weeklyHour','monthlyHour'].forEach(id => populateSelect(id, 0, 23, pad2));
+['dailyMinute','weeklyMinute','monthlyMinute','hourlyMinute'].forEach(id => populateSelect(id, 0, 59, pad2));
+populateSelect('monthlyDay', 1, 28, null);
+
+function setFrequency(freq) {
+    selectedFrequency = freq;
+    document.querySelectorAll('.freq-btn').forEach(b => {
+        b.classList.toggle('border-emerald-500', b.dataset.freq === freq);
+        b.classList.toggle('bg-emerald-900', b.dataset.freq === freq);
+        b.classList.toggle('text-emerald-300', b.dataset.freq === freq);
+        b.classList.toggle('bg-gray-700', b.dataset.freq !== freq);
+        b.classList.toggle('text-gray-300', b.dataset.freq !== freq);
+    });
+    document.querySelectorAll('.schedule-options').forEach(el => el.classList.add('hidden'));
+    const optEl = document.getElementById('opt-' + freq);
+    if (optEl) optEl.classList.remove('hidden');
+    document.getElementById('scheduleActions').classList.remove('hidden');
+    updateCronPreview();
+}
+
+function toggleDay(btn, day) {
+    if (selectedDays.has(day)) { selectedDays.delete(day); } else { selectedDays.add(day); }
+    btn.classList.toggle('border-emerald-500', selectedDays.has(day));
+    btn.classList.toggle('bg-emerald-900', selectedDays.has(day));
+    btn.classList.toggle('text-emerald-300', selectedDays.has(day));
+    btn.classList.toggle('bg-gray-700', !selectedDays.has(day));
+    btn.classList.toggle('text-gray-300', !selectedDays.has(day));
+    updateCronPreview();
+}
+
+function buildCron() {
+    switch (selectedFrequency) {
+        case 'hourly': {
+            const interval = document.getElementById('hourlyInterval').value;
+            const min = document.getElementById('hourlyMinute').value;
+            return interval === '1' ? `${min} * * * *` : `${min} */${interval} * * *`;
+        }
+        case 'daily': {
+            const h = document.getElementById('dailyHour').value;
+            const m = document.getElementById('dailyMinute').value;
+            return `${m} ${h} * * *`;
+        }
+        case 'weekly': {
+            const h = document.getElementById('weeklyHour').value;
+            const m = document.getElementById('weeklyMinute').value;
+            const days = selectedDays.size > 0 ? [...selectedDays].sort().join(',') : '1';
+            return `${m} ${h} * * ${days}`;
+        }
+        case 'monthly': {
+            const d = document.getElementById('monthlyDay').value;
+            const h = document.getElementById('monthlyHour').value;
+            const m = document.getElementById('monthlyMinute').value;
+            return `${m} ${h} ${d} * *`;
+        }
+        case 'custom':
+            return (document.getElementById('customCron').value || '').trim();
+        default:
+            return '';
+    }
+}
+
+function updateCronPreview() {
+    const cron = buildCron();
+    const preview = document.getElementById('cronPreview');
+    if (preview) preview.textContent = cron || '...';
+}
+
+// Attach change listeners for live preview
+['hourlyInterval','hourlyMinute','dailyHour','dailyMinute','weeklyHour','weeklyMinute','monthlyDay','monthlyHour','monthlyMinute'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', updateCronPreview);
+});
+document.getElementById('customCron').addEventListener('input', updateCronPreview);
+
+function describeCron(type, data, expr) {
+    if (type === 'cron' && expr) {
+        const parts = expr.split(/\s+/);
+        if (parts.length === 5) {
+            const [min, hour, dom, mon, dow] = parts;
+            // Try to give a human-readable description
+            if (dom === '*' && mon === '*' && dow === '*' && hour.startsWith('*/')) return `Every ${hour.slice(2)} hours at :${min.padStart(2,'0')}`;
+            if (dom === '*' && mon === '*' && dow === '*' && hour !== '*') return `Daily at ${hour.padStart(2,'0')}:${min.padStart(2,'0')} Server Time`;
+            if (dom === '*' && mon === '*' && dow !== '*') { const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const days = dow.split(',').map(d => dayNames[+d] || d).join(', '); return `Weekly on ${days} at ${hour.padStart(2,'0')}:${min.padStart(2,'0')} Server Time`; }
+            if (mon === '*' && dow === '*' && dom !== '*') return `Monthly on day ${dom} at ${hour.padStart(2,'0')}:${min.padStart(2,'0')} Server Time`;
+        }
+        return `Cron: ${expr}`;
+    }
+    return type || 'Unknown';
+}
+
+async function saveSchedule() {
+    const cron = buildCron();
+    if (!cron) { showScheduleError('Please configure a schedule'); return; }
+    // Validate: 5 fields
+    if (cron.split(/\s+/).length !== 5) { showScheduleError('Cron expression must have 5 fields (minute hour day month weekday)'); return; }
+    const errEl = document.getElementById('scheduleError');
+    errEl.classList.add('hidden');
+    const res = await fetch(`/api/schedules/tasks/${taskId}/schedule`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schedule_type: 'cron', schedule_data: JSON.stringify({ expression: cron }) }),
+    });
+    if (res.ok) { loadTask(); }
+    else { const data = await res.json(); showScheduleError(data.detail || 'Failed to save schedule'); }
+}
+
+async function removeSchedule() {
+    if (!confirm('Remove the schedule? The task will no longer run automatically.')) return;
+    const res = await fetch(`/api/schedules/tasks/${taskId}/unschedule`, { method: 'POST', credentials: 'same-origin' });
+    if (res.ok) { loadTask(); }
+    else { const data = await res.json(); alert(data.detail || 'Failed'); }
+}
+
+function showScheduleError(msg) {
+    const el = document.getElementById('scheduleError');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+
+function updateScheduleUI(task) {
+    const statusEl = document.getElementById('scheduleStatus');
+    const currentEl = document.getElementById('currentSchedule');
+    if (task.IsScheduled) {
+        statusEl.innerHTML = '<span class="px-2 py-1 rounded text-xs font-medium bg-emerald-900 text-emerald-300"><i class="fas fa-check mr-1"></i>Active</span>';
+        let expr = '';
+        if (task.ScheduleData) { try { expr = JSON.parse(task.ScheduleData).expression || ''; } catch(e) {} }
+        document.getElementById('scheduleDescription').textContent = describeCron(task.ScheduleType, task.ScheduleData, expr);
+        document.getElementById('cronExpression').textContent = expr ? `cron: ${expr}` : '';
+        currentEl.classList.remove('hidden');
+    } else {
+        statusEl.innerHTML = '<span class="px-2 py-1 rounded text-xs font-medium bg-gray-700 text-gray-400">Not scheduled</span>';
+        currentEl.classList.add('hidden');
+    }
+}
+
+async function loadTask() {
+    const res = await fetch(`/api/scans/tasks/${taskId}`, { credentials: 'same-origin' });
+    if (!res.ok) { document.getElementById('taskName').textContent = 'Not found'; return; }
+    const task = await res.json();
+    currentTask = task;
+    document.getElementById('taskName').textContent = task.Name;
+    document.getElementById('taskMeta').textContent = `${task.ScanProfile || 'Custom'} \u2022 ${(task.TargetGroups || []).length} groups`;
+    updateScheduleUI(task);
+    renderRuns(task.ScanRuns || []);
+}
+
+function renderRuns(runs) {
+    allRuns = (runs || []).slice().sort((a, b) => (b.ID || 0) - (a.ID || 0));
+    renderRunsPage();
+}
+
+function renderRunsPage() {
+    const tbody = document.getElementById('runsBody');
+    if (allRuns.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No runs yet</td></tr>';
+        document.getElementById('runsPaginationControls').classList.add('hidden');
+        return;
+    }
+    const total = allRuns.length;
+    const totalRunPages = Math.max(1, Math.ceil(total / runsPerPage));
+    if (runsCurrentPage > totalRunPages) runsCurrentPage = totalRunPages;
+    const start = (runsCurrentPage - 1) * runsPerPage;
+    const pageRuns = allRuns.slice(start, start + runsPerPage);
+
+    tbody.innerHTML = pageRuns.map(r => {
+        const hasReport = r.Report && r.Report.ID;
+        const reportId = hasReport ? r.Report.ID : null;
+        return `
+        <tr>
+            <td class="px-6 py-3 text-sm">${r.ID}</td>
+            <td class="px-6 py-3 text-sm">${statusBadge(r.Status)}</td>
+            <td class="px-6 py-3 text-sm">
+                <div class="w-full bg-gray-700 rounded-full h-2"><div class="bg-emerald-500 h-2 rounded-full" style="width: ${r.Progress || 0}%"></div></div>
+                <span class="text-xs text-gray-400">${r.Progress || 0}%</span>
+            </td>
+            <td class="px-6 py-3 text-sm text-gray-400">${r.CreatedAt ? new Date(r.CreatedAt).toLocaleString() : '-'}</td>
+            <td class="px-6 py-3 text-sm">
+                ${hasReport ? `
+                <div class="flex flex-wrap gap-1.5">
+                    <a href="/reports/${reportId}" class="inline-flex items-center bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-0.5 rounded text-xs transition" title="View Report"><i class="fas fa-eye mr-1"></i>View</a>
+                    <a href="/api/reports/${reportId}/download/xml" class="inline-flex items-center bg-gray-700 hover:bg-gray-600 text-white px-2 py-0.5 rounded text-xs transition" title="Download XML"><i class="fas fa-code mr-1"></i>XML</a>
+                    <a href="/api/reports/${reportId}/download/txt" class="inline-flex items-center bg-gray-700 hover:bg-gray-600 text-white px-2 py-0.5 rounded text-xs transition" title="Download Text"><i class="fas fa-file-alt mr-1"></i>TXT</a>
+                    <a href="/api/reports/${reportId}/download/pdf" class="inline-flex items-center bg-red-700 hover:bg-red-600 text-white px-2 py-0.5 rounded text-xs transition" title="Download PDF"><i class="fas fa-file-pdf mr-1"></i>PDF</a>
+                </div>` : `<span class="text-gray-500 text-xs">${r.Status === 'completed' ? 'No report' : '-'}</span>`}
+            </td>
+            <td class="px-6 py-3 text-sm">
+                ${r.Status === 'running' ? `<a href="/tasks/run/${r.ID}" class="text-emerald-400 hover:underline text-xs"><i class="fas fa-broadcast-tower mr-1"></i>Live</a>` : ''}
+            </td>
+        </tr>`;
+    }).join('');
+
+    // Update runs pagination controls
+    const controls = document.getElementById('runsPaginationControls');
+    if (total <= runsPerPage) { controls.classList.add('hidden'); return; }
+    controls.classList.remove('hidden');
+    document.getElementById('runsPageInfo').textContent = `Showing ${start + 1}-${Math.min(start + runsPerPage, total)} of ${total}`;
+    document.getElementById('runsPageNums').textContent = `Page ${runsCurrentPage} of ${totalRunPages}`;
+    document.getElementById('runsPrevBtn').disabled = runsCurrentPage <= 1;
+    document.getElementById('runsNextBtn').disabled = runsCurrentPage >= totalRunPages;
+}
+
+function statusBadge(status) {
+    const colors = { queued: 'bg-gray-700 text-gray-300', running: 'bg-amber-900 text-amber-300', completed: 'bg-emerald-900 text-emerald-300', failed: 'bg-red-900 text-red-300' };
+    return `<span class="px-2 py-1 rounded text-xs font-medium ${colors[status] || colors.queued}">${status}</span>`;
+}
+
+async function runTask() {
+    const res = await fetch(`/api/scans/tasks/${taskId}/run`, { method: 'POST', credentials: 'same-origin' });
+    if (res.ok) { const run = await res.json(); window.location.href = `/tasks/run/${run.ID}`; }
+    else { const err = await res.json(); alert(err.detail || 'Failed to start scan'); }
+}
+
+async function deleteTask() {
+    if (!confirm('Delete this task and all its scan runs? This cannot be undone.')) return;
+    const res = await fetch(`/api/scans/tasks/${taskId}`, { method: 'DELETE', credentials: 'same-origin' });
+    if (res.ok) { window.location.href = '/tasks'; }
+    else { alert('Failed to delete task'); }
+}
+
+// Edit modal
+let allProfiles = [];
+let allTargetGroups = [];
+
+async function loadEditData() {
+    const [profRes, tgRes] = await Promise.all([
+        fetch('/api/scans/profiles', { credentials: 'same-origin' }),
+        fetch('/api/targets?per_page=500', { credentials: 'same-origin' }),
+    ]);
+    if (profRes.ok) {
+        allProfiles = await profRes.json();
+        const sel = document.getElementById('editProfile');
+        sel.innerHTML = '<option value="">Custom</option>';
+        allProfiles.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.name;
+            opt.textContent = `${p.name} (${p.nmap_args})`;
+            sel.appendChild(opt);
+        });
+    }
+    if (tgRes.ok) {
+        const tgData = await tgRes.json();
+        allTargetGroups = tgData.items || [];
+    }
+}
+loadEditData();
+
+// Live server clock
+let serverOffset = 0; // ms difference: serverTime - clientTime
+let serverTZ = '';
+async function syncServerTime() {
+    try {
+        const res = await fetch('/api/server-time');
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverNow = new Date(data.time).getTime();
+        serverOffset = serverNow - Date.now();
+        serverTZ = data.timezone || '';
+    } catch(e) {}
+}
+function updateServerClock() {
+    const now = new Date(Date.now() + serverOffset);
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const mo = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const label = serverTZ && serverTZ !== 'Local' ? ` (${serverTZ})` : '';
+    document.getElementById('serverClock').textContent = `Server: ${yyyy}-${mo}-${dd} ${hh}:${mm}:${ss}${label}`;
+}
+syncServerTime().then(() => { updateServerClock(); setInterval(updateServerClock, 1000); });
+// Re-sync every 5 minutes to stay accurate
+setInterval(syncServerTime, 300000);
+
+function showEditModal() {
+    if (!currentTask) return;
+    document.getElementById('editName').value = currentTask.Name || '';
+    document.getElementById('editDescription').value = currentTask.Description || '';
+    document.getElementById('editProfile').value = currentTask.ScanProfile || '';
+    document.getElementById('editCustomArgs').value = currentTask.CustomArgs || '';
+    document.getElementById('editError').classList.add('hidden');
+
+    // Populate target group checkboxes
+    const currentTgIds = new Set((currentTask.TargetGroups || []).map(g => g.ID));
+    const container = document.getElementById('editTargetGroups');
+    if (allTargetGroups.length === 0) {
+        container.innerHTML = '<div class="text-gray-500 text-sm">No target groups. <a href="/targets" class="text-emerald-400 hover:underline">Create one first</a>.</div>';
+    } else {
+        container.innerHTML = allTargetGroups.map(g => `
+            <label class="flex items-center space-x-2 text-sm">
+                <input type="checkbox" name="edit_target_groups" value="${g.ID}" ${currentTgIds.has(g.ID) ? 'checked' : ''}
+                    class="rounded border-gray-600 bg-gray-600 text-emerald-500 focus:ring-emerald-500">
+                <span>${escapeHtml(g.Name)} (${(g.Targets || []).length} targets)</span>
+            </label>
+        `).join('');
+    }
+
+    document.getElementById('editModal').classList.remove('hidden');
+}
+
+function hideEditModal() {
+    document.getElementById('editModal').classList.add('hidden');
+}
+
+document.getElementById('editForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('editError');
+    errEl.classList.add('hidden');
+
+    const body = {
+        name: document.getElementById('editName').value,
+        description: document.getElementById('editDescription').value,
+        scan_profile: document.getElementById('editProfile').value,
+        custom_args: document.getElementById('editCustomArgs').value,
+        target_group_ids: Array.from(document.querySelectorAll('input[name="edit_target_groups"]:checked')).map(cb => parseInt(cb.value)),
+    };
+
+    const res = await fetch(`/api/scans/tasks/${taskId}`, {
+        method: 'PUT', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (res.ok) {
+        hideEditModal();
+        loadTask();
+    } else {
+        const data = await res.json();
+        errEl.textContent = data.detail || 'Failed to update task';
+        errEl.classList.remove('hidden');
+    }
+});
+
+function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+loadTask();
+setInterval(loadTask, 7000);
+</script>
+</main>
+</body>
+</html>

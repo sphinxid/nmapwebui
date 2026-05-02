@@ -1,0 +1,7 @@
+bin/
+venv/
+instance/
+graphify-out/
+.git/
+.env
+*.db

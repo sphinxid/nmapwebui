@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+{{template "nav" .}}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="max-w-3xl mx-auto">
+    <h1 class="text-2xl font-bold mb-2">Scan Run #<span id="runId">...</span></h1>
+    <p class="text-gray-400 text-sm mb-6">Real-time progress via Server-Sent Events</p>
+    <div class="bg-gray-800 rounded-lg p-6 shadow mb-6">
+        <div class="flex items-center justify-between mb-2">
+            <span id="statusLabel" class="text-lg font-semibold text-gray-300">Queued</span>
+            <span id="progressLabel" class="text-lg font-bold text-emerald-400">0%</span>
+        </div>
+        <div class="w-full bg-gray-700 rounded-full h-4">
+            <div id="progressBar" class="bg-emerald-500 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
+        </div>
+        <div id="eventLog" class="mt-4 bg-gray-900 rounded p-3 h-64 overflow-y-auto font-mono text-xs text-gray-300 space-y-1">
+            <div class="text-gray-500">Connecting to event stream...</div>
+        </div>
+    </div>
+    <div class="flex justify-between">
+        <a href="/tasks" class="text-gray-400 hover:text-white text-sm">&larr; Back to Tasks</a>
+        <a id="reportLink" href="#" class="hidden bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition">View Report</a>
+    </div>
+</div>
+
+<script>
+const runId = window.location.pathname.split('/').pop();
+document.getElementById('runId').textContent = runId;
+const statusLabel = document.getElementById('statusLabel');
+const progressLabel = document.getElementById('progressLabel');
+const progressBar = document.getElementById('progressBar');
+const eventLog = document.getElementById('eventLog');
+const reportLink = document.getElementById('reportLink');
+
+function addLog(msg, type) {
+    const div = document.createElement('div');
+    const time = new Date().toLocaleTimeString();
+    div.innerHTML = `<span class="text-gray-500">[${time}]</span> <span class="${type === 'error' ? 'text-red-400' : type === 'success' ? 'text-emerald-400' : ''}">${escapeHtml(msg)}</span>`;
+    eventLog.appendChild(div);
+    eventLog.scrollTop = eventLog.scrollHeight;
+}
+function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+const evtSource = new EventSource(`/api/sse/scans/${runId}/events`);
+evtSource.addEventListener('state', (e) => {
+    const data = JSON.parse(e.data);
+    statusLabel.textContent = data.status ? (data.status.charAt(0).toUpperCase() + data.status.slice(1)) : 'Unknown';
+    progressLabel.textContent = (data.progress || 0) + '%';
+    progressBar.style.width = (data.progress || 0) + '%';
+    addLog(`State: ${data.status} (${data.progress || 0}%)`);
+});
+evtSource.addEventListener('status', (e) => {
+    const data = JSON.parse(e.data);
+    addLog(data.message || data.status, data.status === 'failed' ? 'error' : 'info');
+    if (data.status === 'completed') { statusLabel.textContent = 'Completed'; statusLabel.classList.add('text-emerald-400'); progressLabel.textContent = '100%'; progressBar.style.width = '100%'; evtSource.close(); checkReport(); }
+    if (data.status === 'failed') { statusLabel.textContent = 'Failed'; statusLabel.classList.add('text-red-400'); evtSource.close(); }
+});
+evtSource.addEventListener('progress', (e) => {
+    const data = JSON.parse(e.data);
+    const pct = data.progress || 0;
+    progressLabel.textContent = pct + '%';
+    progressBar.style.width = pct + '%';
+    addLog(`Progress: ${pct}%`);
+});
+evtSource.addEventListener('error', () => { addLog('Event stream error', 'error'); });
+
+async function checkReport() {
+    const res = await fetch(`/api/scans/runs/${runId}`, { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const run = await res.json();
+    if (run.Report && run.Report.ID) {
+        reportLink.href = `/reports/${run.Report.ID}`;
+        reportLink.classList.remove('hidden');
+    }
+}
+</script>
+</main>
+</body>
+</html>

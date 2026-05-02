@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+{{template "nav" .}}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Target Groups</h1>
+    <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1" id="perPageBtns">
+            <span class="text-xs text-gray-500 mr-1">Per page:</span>
+            <button onclick="setPerPage(20)" data-pp="20" class="pp-btn px-2 py-0.5 rounded text-xs border border-emerald-500 bg-emerald-900 text-emerald-300">20</button>
+            <button onclick="setPerPage(50)" data-pp="50" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">50</button>
+            <button onclick="setPerPage(100)" data-pp="100" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">100</button>
+            <button onclick="setPerPage(500)" data-pp="500" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">500</button>
+        </div>
+        <button onclick="openModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition"><i class="fas fa-plus mr-2"></i>New Group</button>
+    </div>
+</div>
+
+<div id="groupsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="text-gray-500 col-span-full text-center py-8">Loading groups...</div>
+</div>
+
+<div id="paginationControls" class="hidden flex items-center justify-between mt-4">
+    <span class="text-sm text-gray-400" id="pageInfo"></span>
+    <div class="flex items-center gap-2">
+        <button onclick="goPage(currentPage-1)" id="prevBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Prev</button>
+        <span class="text-sm text-gray-400" id="pageNums"></span>
+        <button onclick="goPage(currentPage+1)" id="nextBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Next</button>
+    </div>
+</div>
+
+<div id="groupModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-lg shadow-xl">
+        <h3 class="text-lg font-bold mb-4">Create Target Group</h3>
+        <form id="groupForm" class="space-y-4">
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Name</label>
+                <input type="text" name="name" required class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-emerald-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Description</label>
+                <input type="text" name="description" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-emerald-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Targets (one per line: IP, CIDR, hostname)</label>
+                <textarea name="targets" rows="4" placeholder="192.168.1.1&#10;10.0.0.0/24&#10;example.com" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-emerald-500 outline-none font-mono text-sm"></textarea>
+            </div>
+            <div id="modalError" class="text-red-400 text-sm hidden"></div>
+            <div class="flex justify-end space-x-2 pt-2">
+                <button type="button" onclick="closeModal()" class="text-gray-400 hover:text-white px-3 py-1.5 text-sm">Cancel</button>
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded text-sm font-medium">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let perPage = 20;
+let totalPages = 1;
+
+function setPerPage(n) {
+    perPage = n;
+    currentPage = 1;
+    document.querySelectorAll('.pp-btn').forEach(b => {
+        const active = parseInt(b.dataset.pp) === n;
+        b.className = 'pp-btn px-2 py-0.5 rounded text-xs border ' + (active ? 'border-emerald-500 bg-emerald-900 text-emerald-300' : 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600');
+    });
+    loadGroups();
+}
+function goPage(p) { if (p >= 1 && p <= totalPages) { currentPage = p; loadGroups(); } }
+
+function updatePagination(data) {
+    totalPages = data.pages;
+    const controls = document.getElementById('paginationControls');
+    if (data.total <= data.per_page && data.page === 1) { controls.classList.add('hidden'); return; }
+    controls.classList.remove('hidden');
+    const start = (data.page - 1) * data.per_page + 1;
+    const end = Math.min(data.page * data.per_page, data.total);
+    document.getElementById('pageInfo').textContent = `Showing ${start}-${end} of ${data.total}`;
+    document.getElementById('pageNums').textContent = `Page ${data.page} of ${data.pages}`;
+    document.getElementById('prevBtn').disabled = data.page <= 1;
+    document.getElementById('nextBtn').disabled = data.page >= data.pages;
+}
+
+async function loadGroups() {
+    const res = await fetch(`/api/targets?page=${currentPage}&per_page=${perPage}`, { credentials: 'same-origin' });
+    if (!res.ok) { document.getElementById('groupsContainer').innerHTML = '<div class="text-red-400 col-span-full text-center">Failed to load</div>'; return; }
+    const data = await res.json();
+    const groups = data.items || [];
+    const container = document.getElementById('groupsContainer');
+    if (groups.length === 0 && data.total === 0) {
+        container.innerHTML = '<div class="text-gray-500 col-span-full text-center py-8">No target groups yet. Create one to get started.</div>';
+        document.getElementById('paginationControls').classList.add('hidden');
+        return;
+    }
+    container.innerHTML = groups.map(g => `
+        <div class="bg-gray-800 rounded-lg p-4 shadow hover:shadow-lg transition">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="font-semibold text-lg">${escapeHtml(g.Name)}</h3>
+                <button onclick="deleteGroup(${g.ID})" class="text-red-400 hover:text-red-300 text-sm"><i class="fas fa-trash"></i></button>
+            </div>
+            <p class="text-sm text-gray-400 mb-3">${escapeHtml(g.Description || '')}</p>
+            <div class="bg-gray-900 rounded p-2 max-h-40 overflow-y-auto">
+                ${(g.Targets || []).map(t => `<div class="text-xs font-mono text-gray-300 py-0.5"><span class="text-emerald-400">${t.TargetType}</span> ${escapeHtml(t.Value)}</div>`).join('')}
+                ${(g.Targets || []).length === 0 ? '<div class="text-xs text-gray-500">No targets</div>' : ''}
+            </div>
+            <div class="mt-3 text-xs text-gray-500">${(g.Targets || []).length} targets</div>
+        </div>
+    `).join('');
+    updatePagination(data);
+}
+async function deleteGroup(id) {
+    if (!confirm('Delete this group and all its targets?')) return;
+    const res = await fetch(`/api/targets/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+    if (res.ok) loadGroups(); else alert('Failed to delete');
+}
+function openModal() { document.getElementById('groupModal').classList.remove('hidden'); }
+function closeModal() { document.getElementById('groupModal').classList.add('hidden'); document.getElementById('modalError').classList.add('hidden'); }
+document.getElementById('groupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const lines = form.targets.value.split('\n').map(l => l.trim()).filter(l => l);
+    const targets = lines.map(l => {
+        let type = 'ip';
+        if (l.includes('/')) type = 'cidr';
+        else if (/[a-zA-Z]/.test(l)) type = 'hostname';
+        return { value: l, target_type: type };
+    });
+    const data = { name: form.name.value, description: form.description.value, targets };
+    const res = await fetch('/api/targets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data), credentials: 'same-origin' });
+    if (res.ok) { closeModal(); form.reset(); loadGroups(); }
+    else { const err = await res.json(); document.getElementById('modalError').textContent = err.detail || 'Failed'; document.getElementById('modalError').classList.remove('hidden'); }
+});
+function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+loadGroups();
+</script>
+</main>
+</body>
+</html>

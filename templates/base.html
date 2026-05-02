@@ -1,0 +1,44 @@
+{{define "head"}}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{if .Title}}{{.Title}} - {{end}}NmapWebUI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+{{end}}
+
+{{define "nav"}}
+<nav class="bg-gray-800 border-b border-gray-700">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+            <div class="flex items-center">
+                <a href="/" class="text-xl font-bold text-emerald-400">NmapWebUI</a>
+                <div class="hidden md:block ml-10 space-x-4">
+                    <a href="/" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
+                    <a href="/targets" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Targets</a>
+                    <a href="/tasks" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Scans</a>
+                    <a href="/reports" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Reports</a>
+                    {{if .User}}{{if .User.IsAdmin}}
+                    <a href="/admin/users" class="text-amber-400 hover:text-amber-300 px-3 py-2 rounded-md text-sm font-medium">Users</a>
+                    {{end}}{{end}}
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                {{if .User}}
+                    <span class="text-sm text-gray-400">{{.User.Username}} <span class="text-xs text-gray-500">({{.User.Role}})</span></span>
+                    <button onclick="logout()" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded text-sm">Logout</button>
+                {{else}}
+                    <a href="/login" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Login</a>
+                {{end}}
+            </div>
+        </div>
+    </div>
+</nav>
+<script>
+async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    window.location.href = '/login';
+}
+</script>
+{{end}}
