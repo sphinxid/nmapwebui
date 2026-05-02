@@ -12,6 +12,7 @@ import (
 	"nmapwebui/internal/config"
 	"nmapwebui/internal/db"
 	"nmapwebui/internal/models"
+	"nmapwebui/internal/scheduler"
 	"nmapwebui/internal/services"
 )
 
@@ -35,58 +36,83 @@ func main() {
 
 	fmt.Printf("Worker started with pool size %d, waiting for scan jobs...\n", poolSize)
 
+	// On startup, mark any leftover running/queued scans as failed.
+	// After a restart no nmap processes survive, so they are all orphaned.
+	services.ReapOnStartup(ctx)
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	// Semaphore to limit concurrent scans
-	sem := make(chan struct{}, poolSize)
-
-	go func() {
-		for {
-			result, err := rdb.BRPop(ctx, 5*time.Second, queueKey).Result()
-			if err != nil {
-				if ctx.Err() != nil {
-					return
+	// Launch pool workers that each compete for jobs from Redis.
+	// Jobs stay in Redis until a worker is actually free, so nothing
+	// is lost if the worker restarts while the pool is saturated.
+	for i := 0; i < poolSize; i++ {
+		go func(workerID int) {
+			for {
+				result, err := rdb.BRPop(ctx, 5*time.Second, queueKey).Result()
+				if err != nil {
+					if ctx.Err() != nil {
+						return
+					}
+					continue
 				}
-				// BRPop timeout is normal, just retry
-				continue
-			}
-			if len(result) < 2 {
-				continue
-			}
-			runIDStr := result[1]
-			runID, err := strconv.ParseUint(runIDStr, 10, 32)
-			if err != nil {
-				continue
-			}
+				if len(result) < 2 {
+					continue
+				}
+				runID, err := strconv.ParseUint(result[1], 10, 32)
+				if err != nil {
+					continue
+				}
 
-			var run models.ScanRun
-			if err := db.DB.First(&run, runID).Error; err != nil {
-				continue
-			}
+				var run models.ScanRun
+				if err := db.DB.First(&run, runID).Error; err != nil {
+					fmt.Fprintf(os.Stderr, "[worker %d] Run %d: DB load failed: %v\n", workerID, runID, err)
+					continue
+				}
 
-			// Acquire a pool slot (blocks if all workers busy)
-			sem <- struct{}{}
+				// Skip runs that were already reaped or otherwise finished.
+				if run.Status != "queued" && run.Status != "running" {
+					continue
+				}
 
-			go func(run models.ScanRun, runID uint64) {
-				defer func() { <-sem }()
+				// Mark as running immediately so the dashboard reflects it.
+				// Retry a few times in case SQLite returns BUSY.
+				for attempt := 0; attempt < 3; attempt++ {
+					if err := db.DB.Model(&run).Update("status", "running").Error; err != nil {
+						fmt.Fprintf(os.Stderr, "[worker %d] Run %d: status update to running failed (attempt %d): %v\n", workerID, runID, attempt+1, err)
+						time.Sleep(200 * time.Millisecond)
+						continue
+					}
+					break
+				}
+
+				// Update schedule last_run in the DB so the scheduler knows this trigger was fulfilled
+				var task models.ScanTask
+				if db.DB.First(&task, run.TaskID).Error == nil && task.IsScheduled {
+					now := time.Now().UTC()
+					db.DB.Model(&task).Update("schedule_last_run", now)
+				}
 
 				lockKey := services.ScanLockKey(run.TaskID)
 				token, ok := services.AcquireLock(ctx, lockKey, time.Hour)
 				if !ok {
 					fmt.Printf("Run %d: could not acquire lock for task %d\n", runID, run.TaskID)
 					db.DB.Model(&run).Update("status", "failed")
-					return
+					continue
 				}
 
-				fmt.Printf("Starting scan run %d (task %d)\n", runID, run.TaskID)
+				fmt.Printf("[worker %d] Starting scan run %d (task %d)\n", workerID, runID, run.TaskID)
 				if err := services.ExecuteScan(ctx, uint(runID), run.TaskID, cfg); err != nil {
-					fmt.Fprintf(os.Stderr, "Scan run %d error: %v\n", runID, err)
+					fmt.Fprintf(os.Stderr, "[worker %d] Scan run %d error: %v\n", workerID, runID, err)
 				}
 				services.ReleaseLock(ctx, lockKey, token)
-			}(run, runID)
-		}
-	}()
+
+				// Check if this scheduled task missed any trigger windows
+				// while the worker pool was full and re-queue if needed.
+				scheduler.RecoverMissedSchedule(run.TaskID)
+			}
+		}(i)
+	}
 
 	<-quit
 	fmt.Println("Worker shutting down...")

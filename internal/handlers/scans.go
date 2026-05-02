@@ -184,12 +184,11 @@ func RunScanTask(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Only block if a scan is actively running (worker is executing it).
-		// Queued runs just wait for a worker slot and don't block new runs.
-		var runningCount int64
-		db.DB.Model(&models.ScanRun{}).Where("task_id = ? AND status = ?", task.ID, "running").Count(&runningCount)
-		if runningCount > 0 {
-			c.JSON(http.StatusConflict, gin.H{"detail": "A scan for this task is currently running"})
+		// Block if a scan is already queued or running for this task
+		var activeCount int64
+		db.DB.Model(&models.ScanRun{}).Where("task_id = ? AND status IN ?", task.ID, []string{"queued", "running"}).Count(&activeCount)
+		if activeCount > 0 {
+			c.JSON(http.StatusConflict, gin.H{"detail": "A scan for this task is already queued or running"})
 			return
 		}
 

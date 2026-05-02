@@ -53,6 +53,7 @@ type ScanTask struct {
 	IsScheduled         bool           `gorm:"default:false"`
 	ScheduleType        string         `gorm:"size:20"`
 	ScheduleData        string         `gorm:"type:text"` // JSON
+	ScheduleLastRun     *time.Time     `json:"schedule_last_run"`
 	UseGlobalMaxReports bool           `gorm:"default:true"`
 	MaxReports          *int
 	TargetGroups        []TargetGroup  `gorm:"many2many:task_target_groups;"`

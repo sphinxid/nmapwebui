@@ -64,6 +64,7 @@
             <div class="flex items-center gap-4">
                 <h3 class="text-lg font-semibold"><i class="fas fa-clock mr-2 text-amber-400"></i>Schedule</h3>
                 <span class="text-xs text-gray-500 font-mono" id="serverClock">loading...</span>
+                <span class="text-xs text-emerald-500 font-mono" id="userClock"></span>
             </div>
             <div id="scheduleStatus"></div>
         </div>
@@ -82,6 +83,7 @@
 
             <!-- Schedule form -->
             <div id="scheduleForm">
+                <div class="mb-3 text-xs text-gray-500"><i class="fas fa-globe mr-1"></i>Schedule times use your timezone (<span id="userTZLabel">UTC</span>)</div>
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-400 mb-2">Frequency</label>
                     <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
@@ -523,9 +525,11 @@ async function loadEditData() {
 }
 loadEditData();
 
-// Live server clock
+// Live server + user clock
 let serverOffset = 0; // ms difference: serverTime - clientTime
+let userOffset = 0;   // ms difference: userTime - clientTime
 let serverTZ = '';
+let userTZ = '';
 async function syncServerTime() {
     try {
         const res = await fetch('/api/server-time');
@@ -534,18 +538,34 @@ async function syncServerTime() {
         const serverNow = new Date(data.time).getTime();
         serverOffset = serverNow - Date.now();
         serverTZ = data.timezone || '';
+        if (data.user_time) {
+            userOffset = new Date(data.user_time).getTime() - Date.now();
+        } else {
+            userOffset = serverOffset;
+        }
+        userTZ = data.user_timezone || serverTZ;
+        const tzLabel = document.getElementById('userTZLabel');
+        if (tzLabel) tzLabel.textContent = userTZ;
     } catch(e) {}
 }
+function fmtClock(d) {
+    const yyyy = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${yyyy}-${mo}-${dd} ${hh}:${mm}:${ss}`;
+}
 function updateServerClock() {
-    const now = new Date(Date.now() + serverOffset);
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
-    const ss = String(now.getSeconds()).padStart(2, '0');
-    const yyyy = now.getFullYear();
-    const mo = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const label = serverTZ && serverTZ !== 'Local' ? ` (${serverTZ})` : '';
-    document.getElementById('serverClock').textContent = `Server: ${yyyy}-${mo}-${dd} ${hh}:${mm}:${ss}${label}`;
+    const sLabel = serverTZ && serverTZ !== 'Local' ? ` (${serverTZ})` : '';
+    document.getElementById('serverClock').textContent = `Server: ${fmtClock(new Date(Date.now() + serverOffset))}${sLabel}`;
+    const uEl = document.getElementById('userClock');
+    if (uEl && userTZ && userTZ !== serverTZ) {
+        uEl.textContent = `You: ${fmtClock(new Date(Date.now() + userOffset))} (${userTZ})`;
+    } else if (uEl) {
+        uEl.textContent = '';
+    }
 }
 syncServerTime().then(() => { updateServerClock(); setInterval(updateServerClock, 1000); });
 // Re-sync every 5 minutes to stay accurate

@@ -16,7 +16,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -o worker ./cmd/worker
 # Runtime stage
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends nmap ca-certificates libsqlite3-0 wkhtmltopdf && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends nmap ca-certificates libsqlite3-0 wkhtmltopdf tzdata && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
