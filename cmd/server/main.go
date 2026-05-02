@@ -95,6 +95,7 @@ func main() {
 			authorized.PUT("/scans/tasks/:id", handlers.UpdateScanTask)
 			authorized.DELETE("/scans/tasks/:id", handlers.DeleteScanTask)
 			authorized.POST("/scans/tasks/:id/run", handlers.RunScanTask(cfg))
+			authorized.GET("/scans/runs", handlers.ListScanRuns)
 			authorized.GET("/scans/runs/:id", handlers.GetScanRun)
 
 			authorized.POST("/schedules/tasks/:id/schedule", handlers.ScheduleTask)
@@ -125,6 +126,7 @@ func main() {
 	router.GET("/tasks/create", handlers.TaskCreatePage)
 	router.GET("/tasks/view/:id", handlers.TaskViewPage)
 	router.GET("/tasks/run/:id", handlers.TaskRunPage)
+	router.GET("/runs", handlers.ScanRunsPage)
 	router.GET("/reports", handlers.ReportsPage)
 	router.GET("/reports/:id", handlers.ReportViewPage)
 	router.GET("/admin/users", handlers.AdminUsersPage)

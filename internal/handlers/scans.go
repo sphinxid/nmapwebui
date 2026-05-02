@@ -218,3 +218,32 @@ func GetScanRun(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, run)
 }
+
+func ListScanRuns(c *gin.Context) {
+	user, _ := c.Get("user")
+	u := user.(models.User)
+	page, perPage := parsePagination(c)
+
+	status := c.Query("status")
+
+	query := db.DB.Model(&models.ScanRun{}).
+		Joins("JOIN scan_tasks ON scan_tasks.id = scan_runs.task_id").
+		Where("scan_tasks.user_id = ?", u.ID)
+	if status != "" {
+		query = query.Where("scan_runs.status = ?", status)
+	}
+
+	var total int64
+	query.Count(&total)
+
+	var runs []models.ScanRun
+	q := db.DB.Preload("Task").Preload("Report").
+		Joins("JOIN scan_tasks ON scan_tasks.id = scan_runs.task_id").
+		Where("scan_tasks.user_id = ?", u.ID)
+	if status != "" {
+		q = q.Where("scan_runs.status = ?", status)
+	}
+	q.Order("scan_runs.id DESC").Offset(offset(page, perPage)).Limit(perPage).Find(&runs)
+
+	c.JSON(http.StatusOK, paginatedResponse(runs, total, page, perPage))
+}

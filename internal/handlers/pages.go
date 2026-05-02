@@ -108,6 +108,13 @@ func TaskRunPage(c *gin.Context) {
 	renderPage(c, "tasks/run", PageData{Title: "Live Scan"})
 }
 
+func ScanRunsPage(c *gin.Context) {
+	if !requireUser(c) {
+		return
+	}
+	renderPage(c, "runs/index", PageData{Title: "All Scan Runs"})
+}
+
 func ReportsPage(c *gin.Context) {
 	if !requireUser(c) {
 		return

@@ -76,6 +76,7 @@ type ScanRun struct {
 type ScanReport struct {
 	gorm.Model
 	ScanRunID        uint          `gorm:"not null;uniqueIndex"`
+	ScanRun          *ScanRun
 	Summary          string        `gorm:"type:text"`
 	XMLReportPath    string        `gorm:"size:255"`
 	NormalReportPath string        `gorm:"size:255"`

@@ -8,6 +8,7 @@
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
         <div>
             <h1 class="text-2xl font-bold">Scan Report <span id="reportId" class="text-emerald-400">#...</span></h1>
+            <p id="reportTask" class="text-sm mt-1 hidden"><span class="text-gray-400">Task:</span> <a id="reportTaskLink" href="#" class="text-emerald-400 hover:underline"></a></p>
             <p id="reportMeta" class="text-gray-400 text-sm mt-1"></p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -53,6 +54,15 @@ async function loadReport() {
     const report = await res.json();
     const hosts = report.Hosts || [];
     const container = document.getElementById('hostsContainer');
+
+    if (report.ScanRun && report.ScanRun.Task) {
+        const task = report.ScanRun.Task;
+        const taskEl = document.getElementById('reportTask');
+        const linkEl = document.getElementById('reportTaskLink');
+        linkEl.href = `/tasks/view/${task.ID}`;
+        linkEl.textContent = task.Name;
+        taskEl.classList.remove('hidden');
+    }
 
     if (report.CreatedAt) {
         document.getElementById('reportMeta').textContent = `Generated on ${new Date(report.CreatedAt).toLocaleString()}${report.Summary ? ' \u2022 ' + report.Summary : ''}`;
