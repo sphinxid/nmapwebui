@@ -11,7 +11,50 @@
             <p class="text-gray-400 text-sm" id="taskMeta">...</p>
         </div>
         <div class="space-x-2">
+            <button onclick="showEditModal()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm font-medium transition"><i class="fas fa-edit mr-2"></i>Edit</button>
             <button onclick="runTask()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition"><i class="fas fa-play mr-2"></i>Run Now</button>
+            <button onclick="deleteTask()" class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm transition" title="Delete Task"><i class="fas fa-trash"></i></button>
+        </div>
+    </div>
+
+    <!-- Edit Task Modal -->
+    <div id="editModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-800 rounded-lg shadow-xl border border-gray-700 w-full max-w-lg mx-4 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold">Edit Task</h2>
+                <button onclick="hideEditModal()" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="editForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Name</label>
+                    <input type="text" id="editName" required class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Description</label>
+                    <textarea id="editDescription" rows="2" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Scan Profile</label>
+                    <select id="editProfile" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+                        <option value="">Custom</option>
+                    </select>
+                </div>
+                <div id="editCustomArgsContainer">
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Custom Arguments</label>
+                    <input type="text" id="editCustomArgs" placeholder="-T4 -A -v" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Target Groups</label>
+                    <div id="editTargetGroups" class="space-y-2 max-h-40 overflow-y-auto bg-gray-700 rounded p-2">
+                        <div class="text-gray-500 text-sm">Loading...</div>
+                    </div>
+                </div>
+                <div id="editError" class="text-red-400 text-sm hidden"></div>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" onclick="hideEditModal()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm transition">Cancel</button>
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition">Save Changes</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -384,6 +427,99 @@ async function runTask() {
     if (res.ok) { const run = await res.json(); window.location.href = `/tasks/run/${run.ID}`; }
     else { const err = await res.json(); alert(err.detail || 'Failed to start scan'); }
 }
+
+async function deleteTask() {
+    if (!confirm('Delete this task and all its scan runs? This cannot be undone.')) return;
+    const res = await fetch(`/api/scans/tasks/${taskId}`, { method: 'DELETE', credentials: 'same-origin' });
+    if (res.ok) { window.location.href = '/tasks'; }
+    else { alert('Failed to delete task'); }
+}
+
+// Edit modal
+let allProfiles = [];
+let allTargetGroups = [];
+
+async function loadEditData() {
+    const [profRes, tgRes] = await Promise.all([
+        fetch('/api/scans/profiles', { credentials: 'same-origin' }),
+        fetch('/api/targets/', { credentials: 'same-origin' }),
+    ]);
+    if (profRes.ok) {
+        allProfiles = await profRes.json();
+        const sel = document.getElementById('editProfile');
+        sel.innerHTML = '<option value="">Custom</option>';
+        allProfiles.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.name;
+            opt.textContent = `${p.name} (${p.nmap_args})`;
+            sel.appendChild(opt);
+        });
+    }
+    if (tgRes.ok) {
+        allTargetGroups = await tgRes.json();
+    }
+}
+loadEditData();
+
+function showEditModal() {
+    if (!currentTask) return;
+    document.getElementById('editName').value = currentTask.Name || '';
+    document.getElementById('editDescription').value = currentTask.Description || '';
+    document.getElementById('editProfile').value = currentTask.ScanProfile || '';
+    document.getElementById('editCustomArgs').value = currentTask.CustomArgs || '';
+    document.getElementById('editError').classList.add('hidden');
+
+    // Populate target group checkboxes
+    const currentTgIds = new Set((currentTask.TargetGroups || []).map(g => g.ID));
+    const container = document.getElementById('editTargetGroups');
+    if (allTargetGroups.length === 0) {
+        container.innerHTML = '<div class="text-gray-500 text-sm">No target groups. <a href="/targets" class="text-emerald-400 hover:underline">Create one first</a>.</div>';
+    } else {
+        container.innerHTML = allTargetGroups.map(g => `
+            <label class="flex items-center space-x-2 text-sm">
+                <input type="checkbox" name="edit_target_groups" value="${g.ID}" ${currentTgIds.has(g.ID) ? 'checked' : ''}
+                    class="rounded border-gray-600 bg-gray-600 text-emerald-500 focus:ring-emerald-500">
+                <span>${escapeHtml(g.Name)} (${(g.Targets || []).length} targets)</span>
+            </label>
+        `).join('');
+    }
+
+    document.getElementById('editModal').classList.remove('hidden');
+}
+
+function hideEditModal() {
+    document.getElementById('editModal').classList.add('hidden');
+}
+
+document.getElementById('editForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('editError');
+    errEl.classList.add('hidden');
+
+    const body = {
+        name: document.getElementById('editName').value,
+        description: document.getElementById('editDescription').value,
+        scan_profile: document.getElementById('editProfile').value,
+        custom_args: document.getElementById('editCustomArgs').value,
+        target_group_ids: Array.from(document.querySelectorAll('input[name="edit_target_groups"]:checked')).map(cb => parseInt(cb.value)),
+    };
+
+    const res = await fetch(`/api/scans/tasks/${taskId}`, {
+        method: 'PUT', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (res.ok) {
+        hideEditModal();
+        loadTask();
+    } else {
+        const data = await res.json();
+        errEl.textContent = data.detail || 'Failed to update task';
+        errEl.classList.remove('hidden');
+    }
+});
+
+function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
 
 loadTask();
 setInterval(loadTask, 7000);

@@ -74,6 +74,7 @@ func main() {
 			authorized.GET("/scans/tasks", handlers.ListScanTasks)
 			authorized.POST("/scans/tasks", handlers.CreateScanTask)
 			authorized.GET("/scans/tasks/:id", handlers.GetScanTask)
+			authorized.PUT("/scans/tasks/:id", handlers.UpdateScanTask)
 			authorized.DELETE("/scans/tasks/:id", handlers.DeleteScanTask)
 			authorized.POST("/scans/tasks/:id/run", handlers.RunScanTask(cfg))
 			authorized.GET("/scans/runs/:id", handlers.GetScanRun)

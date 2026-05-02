@@ -89,6 +89,68 @@ func GetScanTask(c *gin.Context) {
 	c.JSON(http.StatusOK, task)
 }
 
+type UpdateScanTaskInput struct {
+	Name           *string `json:"name"`
+	Description    *string `json:"description"`
+	ScanProfile    *string `json:"scan_profile"`
+	CustomArgs     *string `json:"custom_args"`
+	TargetGroupIDs *[]uint `json:"target_group_ids"`
+}
+
+func UpdateScanTask(c *gin.Context) {
+	id := c.Param("id")
+	user, _ := c.Get("user")
+	u := user.(models.User)
+
+	var task models.ScanTask
+	if err := db.DB.Where("id = ? AND user_id = ?", id, u.ID).First(&task).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Scan task not found"})
+		return
+	}
+
+	var input UpdateScanTaskInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+
+	updates := map[string]interface{}{}
+	if input.Name != nil && *input.Name != "" {
+		updates["name"] = *input.Name
+	}
+	if input.Description != nil {
+		updates["description"] = *input.Description
+	}
+	if input.ScanProfile != nil {
+		updates["scan_profile"] = *input.ScanProfile
+		// Clear custom args when switching to a profile
+		if *input.ScanProfile != "" {
+			updates["custom_args"] = ""
+		}
+	}
+	if input.CustomArgs != nil {
+		updates["custom_args"] = *input.CustomArgs
+	}
+
+	if len(updates) > 0 {
+		db.DB.Model(&task).Updates(updates)
+	}
+
+	// Update target groups if provided
+	if input.TargetGroupIDs != nil {
+		db.DB.Model(&task).Association("TargetGroups").Clear()
+		for _, gid := range *input.TargetGroupIDs {
+			var tg models.TargetGroup
+			if db.DB.Where("id = ? AND user_id = ?", gid, u.ID).First(&tg).Error == nil {
+				db.DB.Model(&task).Association("TargetGroups").Append(&tg)
+			}
+		}
+	}
+
+	db.DB.Preload("TargetGroups").Preload("ScanRuns.Report").First(&task, task.ID)
+	c.JSON(http.StatusOK, task)
+}
+
 func DeleteScanTask(c *gin.Context) {
 	id := c.Param("id")
 	user, _ := c.Get("user")
