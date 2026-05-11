@@ -23,6 +23,92 @@ type ScanTaskInput struct {
 	TargetGroupIDs      []uint    `json:"target_group_ids"`
 }
 
+// LastScanPortEntry represents a single open port entry in the last scan summary.
+type LastScanPortEntry struct {
+	IPAddress  string `json:"ip_address"`
+	PortNumber int    `json:"port_number"`
+	Protocol   string `json:"protocol"`
+	Service    string `json:"service"`
+	Version    string `json:"version"`
+}
+
+// LastScanSummary contains a brief summary of the most recent completed scan for a task.
+type LastScanSummary struct {
+	RunID       uint                `json:"run_id"`
+	ReportID    uint                `json:"report_id"`
+	TotalOpen   int                 `json:"total_open"`
+	TotalHosts  int                 `json:"total_hosts"`
+	TopPorts    []LastScanPortEntry `json:"top_ports"`
+}
+
+// ScanTaskWithSummary wraps ScanTask with an optional last scan summary.
+type ScanTaskWithSummary struct {
+	models.ScanTask
+	LastScanSummary *LastScanSummary `json:"last_scan_summary"`
+}
+
+func buildLastScanSummary(taskID uint) *LastScanSummary {
+	// Find the most recent completed scan run with a report for this task.
+	var run models.ScanRun
+	if err := db.DB.Preload("Report").
+		Where("task_id = ? AND status = 'completed'", taskID).
+		Order("id DESC").First(&run).Error; err != nil {
+		return nil
+	}
+	if run.Report == nil {
+		return nil
+	}
+
+	// Count total open ports across all hosts.
+	var totalOpen int64
+	db.DB.Model(&models.PortFinding{}).
+		Joins("JOIN host_findings ON host_findings.id = port_findings.host_id").
+		Where("host_findings.report_id = ? AND port_findings.state = 'open'", run.Report.ID).
+		Count(&totalOpen)
+
+	// Count total hosts.
+	var totalHosts int64
+	db.DB.Model(&models.HostFinding{}).
+		Where("report_id = ?", run.Report.ID).
+		Count(&totalHosts)
+
+	// Fetch up to 10 open ports with host info.
+	type rawPort struct {
+		IPAddress  string
+		PortNumber int
+		Protocol   string
+		Service    string
+		Version    string
+	}
+	var rawPorts []rawPort
+	db.DB.Model(&models.PortFinding{}).
+		Select("host_findings.ip_address, port_findings.port_number, port_findings.protocol, port_findings.service, port_findings.version").
+		Joins("JOIN host_findings ON host_findings.id = port_findings.host_id").
+		Where("host_findings.report_id = ? AND port_findings.state = 'open'", run.Report.ID).
+		Order("host_findings.ip_address ASC, port_findings.port_number ASC").
+		Limit(10).
+		Scan(&rawPorts)
+
+	topPorts := make([]LastScanPortEntry, len(rawPorts))
+	for i, p := range rawPorts {
+		topPorts[i] = LastScanPortEntry{
+			IPAddress:  p.IPAddress,
+			PortNumber: p.PortNumber,
+			Protocol:   p.Protocol,
+			Service:    p.Service,
+			Version:    p.Version,
+		}
+	}
+
+	return &LastScanSummary{
+		RunID:      run.ID,
+		ReportID:   run.Report.ID,
+		TotalOpen:  int(totalOpen),
+		TotalHosts: int(totalHosts),
+		TopPorts:   topPorts,
+	}
+}
+
 func ListScanProfiles(c *gin.Context) {
 	var profiles []gin.H
 	for k, v := range config.DefaultProfiles {
@@ -43,7 +129,16 @@ func ListScanTasks(c *gin.Context) {
 	db.DB.Preload("TargetGroups").Preload("ScanRuns").Where("user_id = ?", u.ID).
 		Order("id DESC").Offset(offset(page, perPage)).Limit(perPage).Find(&tasks)
 
-	c.JSON(http.StatusOK, paginatedResponse(tasks, total, page, perPage))
+	// Enrich each task with its last scan summary.
+	enriched := make([]ScanTaskWithSummary, len(tasks))
+	for i, t := range tasks {
+		enriched[i] = ScanTaskWithSummary{
+			ScanTask:        t,
+			LastScanSummary: buildLastScanSummary(t.ID),
+		}
+	}
+
+	c.JSON(http.StatusOK, paginatedResponse(enriched, total, page, perPage))
 }
 
 func CreateScanTask(c *gin.Context) {
