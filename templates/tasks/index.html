@@ -70,19 +70,56 @@ async function loadTasks() {
         document.getElementById('paginationControls').classList.add('hidden');
         return;
     }
-    container.innerHTML = tasks.map(t => `
-        <div class="bg-gray-800 rounded-lg p-4 flex items-center justify-between shadow hover:shadow-lg transition">
-            <div>
-                <h3 class="font-semibold text-lg">${escapeHtml(t.Name)}</h3>
-                <p class="text-sm text-gray-400">${t.ScanProfile || 'Custom'} &bull; ${(t.TargetGroups || []).length} target groups</p>
-                ${t.IsScheduled ? '<span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded mt-1 inline-block">Scheduled</span>' : ''}
+    container.innerHTML = tasks.map(t => {
+        const s = t.last_scan_summary;
+        let summaryHtml = '';
+        if (s) {
+            const portRows = (s.top_ports || []).map(p =>
+                `<tr class="border-t border-gray-700">
+                    <td class="py-1 pr-3 font-mono text-xs text-gray-200">${escapeHtml(p.ip_address)}</td>
+                    <td class="py-1 pr-3 font-mono text-xs text-emerald-300">${p.port_number}/${escapeHtml(p.protocol)}</td>
+                    <td class="py-1 pr-3 text-xs text-blue-300">${escapeHtml(p.service || '-')}</td>
+                    <td class="py-1 text-xs text-gray-400">${escapeHtml(p.version || '-')}</td>
+                </tr>`
+            ).join('');
+            const moreBadge = s.total_open > 10
+                ? `<span class="ml-2 text-xs text-gray-500">+${s.total_open - 10} more</span>`
+                : '';
+            summaryHtml = `
+            <div class="mt-3 border border-gray-700 rounded-md bg-gray-900 px-3 pt-2 pb-2">
+                <div class="flex items-center gap-4 mb-2">
+                    <span class="text-xs text-gray-400">Last scan:</span>
+                    <span class="text-xs font-medium text-emerald-400"><i class="fas fa-plug mr-1"></i>${s.total_open} open port${s.total_open !== 1 ? 's' : ''}</span>
+                    <span class="text-xs text-gray-400">${s.total_hosts} host${s.total_hosts !== 1 ? 's' : ''}</span>
+                    <a href="/reports/${s.report_id}" class="text-xs text-blue-400 hover:underline ml-auto">View Report #${s.report_id}</a>
+                </div>
+                ${portRows ? `<table class="w-full">
+                    <thead><tr>
+                        <th class="text-left text-xs text-gray-500 font-semibold pb-1 pr-3">IP</th>
+                        <th class="text-left text-xs text-gray-500 font-semibold pb-1 pr-3">Port</th>
+                        <th class="text-left text-xs text-gray-500 font-semibold pb-1 pr-3">Service</th>
+                        <th class="text-left text-xs text-gray-500 font-semibold pb-1">Version</th>
+                    </tr></thead>
+                    <tbody>${portRows}</tbody>
+                </table>${moreBadge}` : '<span class="text-xs text-gray-500">No open ports found.</span>'}
+            </div>`;
+        }
+        return `
+        <div class="bg-gray-800 rounded-lg p-4 shadow hover:shadow-lg transition">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="font-semibold text-lg">${escapeHtml(t.Name)}</h3>
+                    <p class="text-sm text-gray-400">${t.ScanProfile || 'Custom'} &bull; ${(t.TargetGroups || []).length} target groups</p>
+                    ${t.IsScheduled ? '<span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded mt-1 inline-block">Scheduled</span>' : ''}
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="runTask(${t.ID})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-play mr-1"></i>Run</button>
+                    <a href="/tasks/view/${t.ID}" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition">View</a>
+                </div>
             </div>
-            <div class="flex items-center space-x-2">
-                <button onclick="runTask(${t.ID})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-play mr-1"></i>Run</button>
-                <a href="/tasks/view/${t.ID}" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition">View</a>
-            </div>
-        </div>
-    `).join('');
+            ${summaryHtml}
+        </div>`;
+    }).join('');
     updatePagination(data);
 }
 async function runTask(id) {
