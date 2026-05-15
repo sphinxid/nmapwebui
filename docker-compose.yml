@@ -17,7 +17,7 @@ services:
     build: .
     command: /app/server
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - DATABASE_URL=/app/instance/app.db
