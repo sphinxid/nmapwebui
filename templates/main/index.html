@@ -172,44 +172,23 @@ let activityChart, vulnerabilityChart;
 
 async function loadDashboard() {
     try {
-        const [tasksRes, reportsRes, runsRes] = await Promise.all([
-            fetch('/api/scans/tasks?per_page=500', { credentials: 'same-origin' }),
-            fetch('/api/reports?per_page=1', { credentials: 'same-origin' }),
-            fetch('/api/scans/runs?per_page=500', { credentials: 'same-origin' })
-        ]);
-        
-        if (!tasksRes.ok) return;
-        
-        const tasksData = await tasksRes.json();
-        const tasks = tasksData.items || [];
-        
+        const res = await fetch('/api/dashboard/stats', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const stats = await res.json();
+
         // Update metrics
-        document.getElementById('totalTasks').textContent = tasksData.total || tasks.length;
-
-        // Get scan runs data
-        let allRuns = [];
-        if (runsRes.ok) {
-            const runsData = await runsRes.json();
-            allRuns = runsData.items || [];
-        }
-        
-        const activeRuns = allRuns.filter(r => r.Status === 'running' || r.Status === 'queued');
-
-        document.getElementById('runningScans').textContent = activeRuns.filter(r => r.Status === 'running').length;
-
-        if (reportsRes.ok) {
-            const reportsData = await reportsRes.json();
-            document.getElementById('totalReports').textContent = reportsData.total || 0;
-        }
+        document.getElementById('totalTasks').textContent = stats.total_tasks || 0;
+        document.getElementById('runningScans').textContent = stats.running_scans || 0;
+        document.getElementById('totalReports').textContent = stats.total_reports || 0;
 
         // Update active scans section
-        updateActiveScans(activeRuns);
-        
+        updateActiveScans(stats.active_runs || []);
+
         // Update recent runs
-        updateRecentRuns(allRuns);
-        
+        updateRecentRuns(stats.recent_runs || []);
+
         // Update charts
-        updateCharts(allRuns);
+        updateCharts(stats.status_counts || {}, stats.activity_last7 || []);
 
     } catch (error) {
         console.error('Error loading dashboard:', error);
@@ -230,7 +209,7 @@ function updateActiveScans(activeRuns) {
                 <td class="px-6 py-4 text-sm font-mono text-gray-400">#${r.ID}</td>
                 <td class="px-6 py-4 text-sm">
                     <a href="/tasks/view/${r.TaskID}" class="text-primary hover:text-green-400 font-medium">
-                        ${escapeHtml(r.Task?.Name || 'Unknown')}
+                        ${escapeHtml(r.TaskName || 'Unknown')}
                     </a>
                 </td>
                 <td class="px-6 py-4 text-sm">${statusBadge(r.Status)}</td>
@@ -284,7 +263,7 @@ function updateRecentRuns(allRuns) {
             <tr class="hover:bg-gray-800/50 transition-colors">
                 <td class="px-6 py-4 text-sm">
                     <a href="/tasks/view/${r.TaskID}" class="text-primary hover:text-green-400 font-medium">
-                        ${escapeHtml(r.Task?.Name || 'Unknown')}
+                        ${escapeHtml(r.TaskName || 'Unknown')}
                     </a>
                 </td>
                 <td class="px-6 py-4 text-sm">${statusBadge(r.Status)}</td>
@@ -303,32 +282,14 @@ function updateRecentRuns(allRuns) {
     }).join('');
 }
 
-function updateCharts(allRuns) {
+function updateCharts(statusCounts, activityLast7) {
     // Activity Chart
     const ctx1 = document.getElementById('activityChart').getContext('2d');
     if (activityChart) activityChart.destroy();
-    
-    const last7Days = Array.from({length: 7}, (_, i) => {
-        const date = new Date();
-        date.setDate(date.getDate() - (6 - i));
-        return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    });
-    
-    // Count scans per day for the last 7 days
-    const activityData = last7Days.map((dayLabel, index) => {
-        const dayStart = new Date();
-        dayStart.setDate(dayStart.getDate() - (6 - index));
-        dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(dayStart);
-        dayEnd.setDate(dayEnd.getDate() + 1);
-        
-        return allRuns.filter(run => {
-            if (!run.CompletedAt) return false;
-            const completedDate = new Date(run.CompletedAt);
-            return completedDate >= dayStart && completedDate < dayEnd;
-        }).length;
-    });
-    
+
+    const last7Days = activityLast7.map(d => d.date);
+    const activityData = activityLast7.map(d => d.count);
+
     activityChart = new Chart(ctx1, {
         type: 'line',
         data: {
@@ -365,27 +326,13 @@ function updateCharts(allRuns) {
     // Scan Status Distribution Chart
     const ctx2 = document.getElementById('vulnerabilityChart').getContext('2d');
     if (vulnerabilityChart) vulnerabilityChart.destroy();
-    
-    // Count scans by status
-    const statusCounts = {
-        'queued': 0,
-        'running': 0,
-        'completed': 0,
-        'failed': 0
-    };
-    
-    allRuns.forEach(run => {
-        if (statusCounts.hasOwnProperty(run.Status)) {
-            statusCounts[run.Status]++;
-        }
-    });
-    
+
     vulnerabilityChart = new Chart(ctx2, {
         type: 'doughnut',
         data: {
             labels: ['Queued', 'Running', 'Completed', 'Failed'],
             datasets: [{
-                data: [statusCounts.queued, statusCounts.running, statusCounts.completed, statusCounts.failed],
+                data: [statusCounts.queued || 0, statusCounts.running || 0, statusCounts.completed || 0, statusCounts.failed || 0],
                 backgroundColor: [
                     '#6b7280', // Gray for queued
                     '#3b82f6', // Blue for running
