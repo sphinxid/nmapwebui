@@ -1,38 +1,205 @@
 <!DOCTYPE html>
 <html lang="en">
 {{template "head" .}}
-<body class="bg-gray-900 text-gray-100 min-h-screen">
-{{template "nav" .}}
-<main class="max-w-md mx-auto mt-20">
-    <div class="bg-gray-800 rounded-lg shadow-lg p-8">
-        <h2 class="text-2xl font-bold text-center mb-6">Login</h2>
-        <form id="loginForm" class="space-y-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-400 mb-1">Username</label>
-                <input type="text" name="username" required class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-400 mb-1">Password</label>
-                <input type="password" name="password" required class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
-            </div>
-            <div id="errorMsg" class="text-red-400 text-sm hidden"></div>
-            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 rounded transition">Sign In</button>
-        </form>
-        <p class="mt-4 text-center text-sm text-gray-500">Contact your administrator for account access.</p>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+    <!-- Background Pattern -->
+    <div class="fixed inset-0 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
+        <div class="absolute inset-0 bg-black/50"></div>
+        <div class="absolute inset-0 opacity-5">
+    <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+        <defs>
+            <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+                <path d="M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z" fill="#10b981"/>
+            </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#grid)" />
+    </svg>
+</div>
     </div>
-</main>
 
-<script>
-document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
-    const errorMsg = document.getElementById('errorMsg');
-    errorMsg.classList.add('hidden');
-    const res = await fetch('/api/auth/login', { method: 'POST', body: formData, credentials: 'same-origin' });
-    if (res.ok) { window.location.href = '/'; }
-    else { const data = await res.json(); errorMsg.textContent = data.detail || 'Login failed'; errorMsg.classList.remove('hidden'); }
-});
-</script>
+    <!-- Login Container -->
+    <div class="relative min-h-screen flex items-center justify-center px-4">
+        <div class="w-full max-w-md">
+            <!-- Logo and Brand -->
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-primary rounded-2xl mb-4 shadow-2xl">
+                    <i class="fas fa-network-wired text-white text-3xl"></i>
+                </div>
+                <h1 class="text-3xl font-bold text-white mb-2">NmapWebUI</h1>
+                <p class="text-gray-400">Network Security Scanner Platform</p>
+            </div>
+
+            <!-- Login Card -->
+            <div class="glass-effect rounded-2xl p-8 shadow-2xl border border-gray-800">
+                <!-- Security Badge -->
+                <div class="flex items-center justify-center mb-6">
+                    <div class="flex items-center space-x-2 bg-green-500/10 border border-green-500/20 rounded-full px-4 py-2">
+                        <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span class="text-green-400 text-sm font-medium">Secure Connection</span>
+                    </div>
+                </div>
+
+                <!-- Login Form -->
+                <form id="loginForm" class="space-y-6">
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-gray-300 mb-2">
+                            <i class="fas fa-user mr-2 text-gray-400"></i>Username
+                        </label>
+                        <input 
+                            type="text" 
+                            id="username"
+                            name="username" 
+                            required 
+                            class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                            placeholder="Enter your username"
+                            autocomplete="username"
+                        >
+                    </div>
+                    
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-300 mb-2">
+                            <i class="fas fa-lock mr-2 text-gray-400"></i>Password
+                        </label>
+                        <div class="relative">
+                            <input 
+                                type="password" 
+                                id="password"
+                                name="password" 
+                                required 
+                                class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-3 pr-12 text-white placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                placeholder="Enter your password"
+                                autocomplete="current-password"
+                            >
+                            <button 
+                                type="button" 
+                                onclick="togglePassword()"
+                                class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                            >
+                                <i id="passwordToggle" class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Error Message -->
+                    <div id="errorMsg" class="hidden bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-400 text-sm">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        <span id="errorText"></span>
+                    </div>
+
+                    <!-- Login Button -->
+                    <button 
+                        type="submit" 
+                        id="loginBtn"
+                        class="w-full btn-primary py-3 text-lg font-semibold shadow-lg flex items-center justify-center space-x-2"
+                    >
+                        <i class="fas fa-sign-in-alt"></i>
+                        <span>Sign In</span>
+                        <div id="loginSpinner" class="hidden">
+                            <i class="fas fa-spinner fa-spin"></i>
+                        </div>
+                    </button>
+                </form>
+
+                <!-- Additional Information -->
+                <div class="mt-6 pt-6 border-t border-gray-800">
+                    <div class="flex items-center justify-center space-x-4 text-sm text-gray-400">
+                        <div class="flex items-center space-x-1">
+                            <i class="fas fa-shield-alt text-green-400"></i>
+                            <span>Enterprise Security</span>
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            <i class="fas fa-lock text-green-400"></i>
+                            <span>256-bit Encryption</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Help Text -->
+                <p class="mt-4 text-center text-sm text-gray-500">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Contact your administrator for account access
+                </p>
+            </div>
+
+            <!-- Footer -->
+            <div class="mt-8 text-center text-sm text-gray-500">
+                <p>&copy; 2024 NmapWebUI. Professional Network Security Scanning.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function togglePassword() {
+        const passwordInput = document.getElementById('password');
+        const passwordToggle = document.getElementById('passwordToggle');
+        
+        if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            passwordToggle.classList.remove('fa-eye');
+            passwordToggle.classList.add('fa-eye-slash');
+        } else {
+            passwordInput.type = 'password';
+            passwordToggle.classList.remove('fa-eye-slash');
+            passwordToggle.classList.add('fa-eye');
+        }
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const form = e.target;
+        const formData = new FormData(form);
+        const errorMsg = document.getElementById('errorMsg');
+        const errorText = document.getElementById('errorText');
+        const loginBtn = document.getElementById('loginBtn');
+        const loginSpinner = document.getElementById('loginSpinner');
+        
+        // Hide error message
+        errorMsg.classList.add('hidden');
+        
+        // Show loading state
+        loginBtn.disabled = true;
+        loginBtn.classList.add('opacity-75');
+        loginSpinner.classList.remove('hidden');
+        
+        try {
+            const res = await fetch('/api/auth/login', { 
+                method: 'POST', 
+                body: formData, 
+                credentials: 'same-origin' 
+            });
+            
+            if (res.ok) {
+                // Success - redirect to dashboard
+                window.location.href = '/';
+            } else {
+                // Error - show message
+                const data = await res.json();
+                errorText.textContent = data.detail || 'Login failed. Please check your credentials.';
+                errorMsg.classList.remove('hidden');
+            }
+        } catch (error) {
+            errorText.textContent = 'Network error. Please try again.';
+            errorMsg.classList.remove('hidden');
+        } finally {
+            // Hide loading state
+            loginBtn.disabled = false;
+            loginBtn.classList.remove('opacity-75');
+            loginSpinner.classList.add('hidden');
+        }
+    });
+
+    // Add enter key support for form fields
+    document.getElementById('username').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('password').focus();
+        }
+    });
+
+    // Auto-focus username field
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('username').focus();
+    });
+    </script>
 </body>
 </html>
