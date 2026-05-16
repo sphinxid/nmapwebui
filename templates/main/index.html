@@ -169,10 +169,11 @@
 
 <script>
 let activityChart, vulnerabilityChart;
+let currentPeriod = 'week';
 
 async function loadDashboard() {
     try {
-        const res = await fetch('/api/dashboard/stats', { credentials: 'same-origin' });
+        const res = await fetch(`/api/dashboard/stats?period=${currentPeriod}`, { credentials: 'same-origin' });
         if (!res.ok) return;
         const stats = await res.json();
 
@@ -188,7 +189,7 @@ async function loadDashboard() {
         updateRecentRuns(stats.recent_runs || []);
 
         // Update charts
-        updateCharts(stats.status_counts || {}, stats.activity_last7 || []);
+        updateCharts(stats.status_counts || {}, stats.activity || []);
 
     } catch (error) {
         console.error('Error loading dashboard:', error);
@@ -282,18 +283,17 @@ function updateRecentRuns(allRuns) {
     }).join('');
 }
 
-function updateCharts(statusCounts, activityLast7) {
-    // Activity Chart
+function updateActivityChart(activity) {
     const ctx1 = document.getElementById('activityChart').getContext('2d');
     if (activityChart) activityChart.destroy();
 
-    const last7Days = activityLast7.map(d => d.date);
-    const activityData = activityLast7.map(d => d.count);
+    const labels = activity.map(d => d.date);
+    const activityData = activity.map(d => d.count);
 
     activityChart = new Chart(ctx1, {
         type: 'line',
         data: {
-            labels: last7Days,
+            labels: labels,
             datasets: [{
                 label: 'Scans Completed',
                 data: activityData,
@@ -322,6 +322,10 @@ function updateCharts(statusCounts, activityLast7) {
             }
         }
     });
+}
+
+function updateCharts(statusCounts, activity) {
+    updateActivityChart(activity);
 
     // Scan Status Distribution Chart
     const ctx2 = document.getElementById('vulnerabilityChart').getContext('2d');
@@ -393,16 +397,21 @@ function refreshDashboard() {
 
 
 function changeChartPeriod(period) {
-    // Update chart period buttons
+    currentPeriod = period;
+
+    // Update button styles
     document.querySelectorAll('.chart-period-btn').forEach(btn => {
         btn.classList.remove('bg-primary', 'text-white');
         btn.classList.add('bg-gray-800', 'text-gray-400');
     });
     event.target.classList.remove('bg-gray-800', 'text-gray-400');
     event.target.classList.add('bg-primary', 'text-white');
-    
-    // Reload charts with new period
-    loadDashboard();
+
+    // Reload only the activity chart for the new period
+    fetch(`/api/dashboard/stats?period=${currentPeriod}`, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(stats => updateActivityChart(stats.activity || []))
+        .catch(err => console.error('Error loading chart data:', err));
 }
 
 function pauseAllScans() {

@@ -28,13 +28,14 @@ type DashboardActivityDay struct {
 
 // DashboardStats is the response shape for GET /api/dashboard/stats.
 type DashboardStats struct {
-	TotalTasks    int64                  `json:"total_tasks"`
-	RunningScans  int64                  `json:"running_scans"`
-	TotalReports  int64                  `json:"total_reports"`
-	ActiveRuns    []DashboardRun         `json:"active_runs"`
-	RecentRuns    []DashboardRun         `json:"recent_runs"`
-	StatusCounts  map[string]int64       `json:"status_counts"`
-	ActivityLast7 []DashboardActivityDay `json:"activity_last7"`
+	TotalTasks   int64                  `json:"total_tasks"`
+	RunningScans int64                  `json:"running_scans"`
+	TotalReports int64                  `json:"total_reports"`
+	ActiveRuns   []DashboardRun         `json:"active_runs"`
+	RecentRuns   []DashboardRun         `json:"recent_runs"`
+	StatusCounts map[string]int64       `json:"status_counts"`
+	Activity     []DashboardActivityDay `json:"activity"`
+	Period       string                 `json:"period"`
 }
 
 // GetDashboardStats returns aggregated data for the dashboard in a single request.
@@ -131,22 +132,60 @@ func GetDashboardStats(c *gin.Context) {
 		stats.StatusCounts[row.Status] = row.Count
 	}
 
-	// --- Activity last 7 days (completed scans per day) ---
+	// --- Activity chart: period-aware (day=last 24h by hour, week=last 7 days, month=last 30 days) ---
+	period := c.DefaultQuery("period", "week")
+	if period != "day" && period != "week" && period != "month" {
+		period = "week"
+	}
+	stats.Period = period
+
 	now := time.Now()
-	stats.ActivityLast7 = make([]DashboardActivityDay, 7)
-	for i := 0; i < 7; i++ {
-		dayStart := time.Date(now.Year(), now.Month(), now.Day()-6+i, 0, 0, 0, 0, now.Location())
-		dayEnd := dayStart.Add(24 * time.Hour)
-		label := dayStart.Format("Mon, Jan 2")
-
-		var count int64
-		db.DB.Model(&models.ScanRun{}).
-			Joins("JOIN scan_tasks ON scan_tasks.id = scan_runs.task_id").
-			Where("scan_tasks.user_id = ? AND scan_runs.status = ? AND scan_runs.completed_at >= ? AND scan_runs.completed_at < ?",
-				u.ID, "completed", dayStart, dayEnd).
-			Count(&count)
-
-		stats.ActivityLast7[i] = DashboardActivityDay{Date: label, Count: int(count)}
+	switch period {
+	case "day":
+		// Last 24 hours, one bucket per hour
+		stats.Activity = make([]DashboardActivityDay, 24)
+		for i := 0; i < 24; i++ {
+			bucketStart := time.Date(now.Year(), now.Month(), now.Day(), now.Hour()-23+i, 0, 0, 0, now.Location())
+			bucketEnd := bucketStart.Add(time.Hour)
+			label := bucketStart.Format("15:04")
+			var count int64
+			db.DB.Model(&models.ScanRun{}).
+				Joins("JOIN scan_tasks ON scan_tasks.id = scan_runs.task_id").
+				Where("scan_tasks.user_id = ? AND scan_runs.status = ? AND scan_runs.completed_at >= ? AND scan_runs.completed_at < ?",
+					u.ID, "completed", bucketStart, bucketEnd).
+				Count(&count)
+			stats.Activity[i] = DashboardActivityDay{Date: label, Count: int(count)}
+		}
+	case "month":
+		// Last 30 days, one bucket per day
+		stats.Activity = make([]DashboardActivityDay, 30)
+		for i := 0; i < 30; i++ {
+			dayStart := time.Date(now.Year(), now.Month(), now.Day()-29+i, 0, 0, 0, 0, now.Location())
+			dayEnd := dayStart.Add(24 * time.Hour)
+			label := dayStart.Format("Jan 2")
+			var count int64
+			db.DB.Model(&models.ScanRun{}).
+				Joins("JOIN scan_tasks ON scan_tasks.id = scan_runs.task_id").
+				Where("scan_tasks.user_id = ? AND scan_runs.status = ? AND scan_runs.completed_at >= ? AND scan_runs.completed_at < ?",
+					u.ID, "completed", dayStart, dayEnd).
+				Count(&count)
+			stats.Activity[i] = DashboardActivityDay{Date: label, Count: int(count)}
+		}
+	default: // week
+		// Last 7 days, one bucket per day
+		stats.Activity = make([]DashboardActivityDay, 7)
+		for i := 0; i < 7; i++ {
+			dayStart := time.Date(now.Year(), now.Month(), now.Day()-6+i, 0, 0, 0, 0, now.Location())
+			dayEnd := dayStart.Add(24 * time.Hour)
+			label := dayStart.Format("Mon, Jan 2")
+			var count int64
+			db.DB.Model(&models.ScanRun{}).
+				Joins("JOIN scan_tasks ON scan_tasks.id = scan_runs.task_id").
+				Where("scan_tasks.user_id = ? AND scan_runs.status = ? AND scan_runs.completed_at >= ? AND scan_runs.completed_at < ?",
+					u.ID, "completed", dayStart, dayEnd).
+				Count(&count)
+			stats.Activity[i] = DashboardActivityDay{Date: label, Count: int(count)}
+		}
 	}
 
 	c.JSON(http.StatusOK, stats)
