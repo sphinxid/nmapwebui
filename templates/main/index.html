@@ -166,7 +166,6 @@
             </table>
         </div>
     </div>
-{{template "footer" .}}
 
 <script>
 let activityChart, vulnerabilityChart;
@@ -475,5 +474,4 @@ setInterval(loadDashboard, 30000);
 // Listen for auto-refresh events
 document.addEventListener('autoRefresh', loadDashboard);
 </script>
-</body>
-</html>
+{{template "footer" .}}
