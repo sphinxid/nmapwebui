@@ -27,26 +27,26 @@ clean:
 
 # Deploy: rebuild images and restart (uses layer cache - fast when only code changed)
 deploy:
-	sudo docker-compose build
-	sudo docker-compose up -d
+	sudo docker compose build
+	sudo docker compose up -d
 
 # Force full rebuild (slow - only needed when Dockerfile or deps change)
 deploy-full:
-	sudo docker-compose build --no-cache
-	sudo docker-compose up -d
+	sudo docker compose build --no-cache
+	sudo docker compose up -d
 
 # Restart containers without rebuilding (instant - for config/env changes only)
 restart:
-	sudo docker-compose restart
+	sudo docker compose restart
 
 # View logs
 logs:
-	sudo docker-compose logs -f --tail=50
+	sudo docker compose logs -f --tail=50
 
 # Stop containers (preserves data volumes)
 down:
-	sudo docker-compose down
+	sudo docker compose down
 
 # Stop containers AND delete data (destructive!)
 down-clean:
-	sudo docker-compose down -v
+	sudo docker compose down -v

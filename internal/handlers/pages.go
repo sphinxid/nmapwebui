@@ -33,8 +33,9 @@ func LoadTemplates() *template.Template {
 }
 
 type PageData struct {
-	User  *models.User
-	Title string
+	User       *models.User
+	Title      string
+	ActivePage string
 }
 
 func setUser(c *gin.Context, data *PageData) {
@@ -62,7 +63,7 @@ func DashboardPage(c *gin.Context) {
 	if !requireUser(c) {
 		return
 	}
-	renderPage(c, "main/index", PageData{Title: "Dashboard"})
+	renderPage(c, "main/index", PageData{Title: "Dashboard", ActivePage: "dashboard"})
 }
 
 func LoginPage(c *gin.Context) {
@@ -70,63 +71,63 @@ func LoginPage(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/")
 		return
 	}
-	renderPage(c, "auth/login", PageData{Title: "Login"})
+	renderPage(c, "auth/login", PageData{Title: "Login", ActivePage: "login"})
 }
 
 func TargetsPage(c *gin.Context) {
 	if !requireUser(c) {
 		return
 	}
-	renderPage(c, "targets/index", PageData{Title: "Target Groups"})
+	renderPage(c, "targets/index", PageData{Title: "Target Groups", ActivePage: "targets"})
 }
 
 func TasksPage(c *gin.Context) {
 	if !requireUser(c) {
 		return
 	}
-	renderPage(c, "tasks/index", PageData{Title: "Scan Tasks"})
+	renderPage(c, "tasks/index", PageData{Title: "Scan Tasks", ActivePage: "tasks"})
 }
 
 func TaskCreatePage(c *gin.Context) {
 	if !requireUser(c) {
 		return
 	}
-	renderPage(c, "tasks/create", PageData{Title: "Create Scan Task"})
+	renderPage(c, "tasks/create", PageData{Title: "Create Scan Task", ActivePage: "tasks-create"})
 }
 
 func TaskViewPage(c *gin.Context) {
 	if !requireUser(c) {
 		return
 	}
-	renderPage(c, "tasks/view", PageData{Title: "View Task"})
+	renderPage(c, "tasks/view", PageData{Title: "View Task", ActivePage: "tasks-view"})
 }
 
 func TaskRunPage(c *gin.Context) {
 	if !requireUser(c) {
 		return
 	}
-	renderPage(c, "tasks/run", PageData{Title: "Live Scan"})
+	renderPage(c, "tasks/run", PageData{Title: "Live Scan", ActivePage: "tasks-run"})
 }
 
 func ScanRunsPage(c *gin.Context) {
 	if !requireUser(c) {
 		return
 	}
-	renderPage(c, "runs/index", PageData{Title: "All Scan Runs"})
+	renderPage(c, "runs/index", PageData{Title: "All Scan Runs", ActivePage: "runs"})
 }
 
 func ReportsPage(c *gin.Context) {
 	if !requireUser(c) {
 		return
 	}
-	renderPage(c, "reports/index", PageData{Title: "Reports"})
+	renderPage(c, "reports/index", PageData{Title: "Reports", ActivePage: "reports"})
 }
 
 func ReportViewPage(c *gin.Context) {
 	if !requireUser(c) {
 		return
 	}
-	renderPage(c, "reports/view", PageData{Title: "Report"})
+	renderPage(c, "reports/view", PageData{Title: "Report", ActivePage: "reports-view"})
 }
 
 func AdminUsersPage(c *gin.Context) {
@@ -140,5 +141,5 @@ func AdminUsersPage(c *gin.Context) {
 		c.Abort()
 		return
 	}
-	renderPage(c, "admin/users", PageData{Title: "User Management"})
+	renderPage(c, "admin/users", PageData{Title: "User Management", ActivePage: "admin-users"})
 }

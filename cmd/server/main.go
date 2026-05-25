@@ -105,6 +105,8 @@ func main() {
 			authorized.GET("/reports/:id", handlers.GetReport)
 			authorized.GET("/reports/:id/download/:format", handlers.DownloadReport)
 
+			authorized.GET("/dashboard/stats", handlers.GetDashboardStats)
+
 			authorized.GET("/sse/scans/:run_id/events", handlers.ScanEvents)
 
 			admin := authorized.Group("/admin")
