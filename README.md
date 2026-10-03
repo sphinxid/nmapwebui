@@ -36,7 +36,7 @@ nmapwebui/
 │   ├── js/common.js        # Shared UI helpers (API wrapper, toasts, modals, pagination)
 │   └── vendor/             # Chart.js and Font Awesome, vendored for offline use
 ├── tailwind.config.js      # Tailwind content paths and theme
-├── package.json            # Frontend build tooling (dev only, not needed at runtime)
+├── scripts/vendor.sh       # Fetches pinned Chart.js / Font Awesome releases (dev only)
 ├── Dockerfile              # Multi-stage build
 ├── docker-compose.yml      # Server + Worker + Redis
 ├── Makefile                # Build/run shortcuts
@@ -72,14 +72,15 @@ The server starts at http://localhost:51111 (override with `PORT` in `.env`). Lo
 
 ### Frontend assets
 
-The UI has **no runtime CDN dependency**: Tailwind is compiled to `static/css/app.css`, and Chart.js and Font Awesome are vendored under `static/vendor/`. These build outputs are committed, so Go builds and Docker images need no Node.
+The UI has **no runtime CDN dependency**: Tailwind is compiled to `static/css/app.css`, and Chart.js and Font Awesome are vendored under `static/vendor/`. These outputs are committed, so running, building and the Docker image need only Go.
 
-Node is only required when you change templates, `static/css/input.css`, or want to upgrade a frontend library:
+No Node is involved. Tailwind runs as its standalone binary, downloaded once into `bin/` by the Makefile, and libraries are fetched with `curl` from pinned release URLs. Rebuild only after changing templates or `static/css/input.css`, or to upgrade a library:
 
 ```bash
-make frontend     # npm install + re-vendor libraries + rebuild CSS
-make css          # rebuild CSS only
-make css-watch    # rebuild CSS on every template change
+make css          # download Tailwind binary if missing, rebuild app.css
+make css-watch    # rebuild on every template change
+make vendor       # re-fetch Chart.js and Font Awesome (versions pinned in scripts/vendor.sh)
+make frontend     # vendor + css
 ```
 
 ### Docker Compose
@@ -99,7 +100,7 @@ Access at http://localhost:51111.
 | Command | Description |
 |---------|-------------|
 | `make run` / `make worker` | Build and run the server / worker locally |
-| `make frontend` / `make css` | Rebuild vendored assets and Tailwind CSS (requires Node) |
+| `make frontend` / `make css` | Rebuild vendored assets and Tailwind CSS (standalone binary, no Node) |
 | `make deploy` | Build with layer cache and restart (fast for code-only changes) |
 | `make deploy-full` | Full rebuild without cache (needed when Dockerfile changes) |
 | `make restart` | Restart containers without rebuilding |
@@ -150,6 +151,7 @@ Connect to `/api/sse/scans/:run_id/events` for real-time progress:
 Nmap outputs saved as:
 - **XML** (`-oX`) — parsed into structured Host/Port findings
 - **Normal text** (`-oN`) — raw output for download
+- **PDF** and **HTML** — generated on demand from the parsed findings. PDFs are drawn in pure Go with [go-pdf/fpdf](https://github.com/go-pdf/fpdf); no external renderer is required.
 
 ### Authentication
 - JWT access tokens (cookie + Bearer header)

@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -306,7 +303,8 @@ func DownloadReport(c *gin.Context) {
 	u := user.(models.User)
 
 	var report models.ScanReport
-	if err := db.DB.Preload("Hosts.Ports").Joins("JOIN scan_runs ON scan_runs.id = scan_reports.scan_run_id").
+	if err := db.DB.Preload("Hosts.Ports").Preload("ScanRun.Task").
+		Joins("JOIN scan_runs ON scan_runs.id = scan_reports.scan_run_id").
 		Joins("JOIN scan_tasks ON scan_tasks.id = scan_runs.task_id").
 		Where("scan_reports.id = ? AND scan_tasks.user_id = ?", id, u.ID).First(&report).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Report not found"})
@@ -335,12 +333,7 @@ func DownloadReport(c *gin.Context) {
 		c.String(http.StatusOK, html)
 		return
 	case "pdf":
-		html, err := renderHTMLReport(report)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to generate report"})
-			return
-		}
-		pdf, err := htmlToPDF(html)
+		pdf, err := renderPDFReport(report)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"detail": fmt.Sprintf("PDF generation failed: %v", err)})
 			return
@@ -422,36 +415,6 @@ func renderHTMLReport(report models.ScanReport) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
-}
-
-func htmlToPDF(htmlContent string) ([]byte, error) {
-	tmpDir := os.TempDir()
-	htmlFile := filepath.Join(tmpDir, fmt.Sprintf("report_%d.html", time.Now().UnixNano()))
-	pdfFile := filepath.Join(tmpDir, fmt.Sprintf("report_%d.pdf", time.Now().UnixNano()))
-	defer os.Remove(htmlFile)
-	defer os.Remove(pdfFile)
-
-	if err := os.WriteFile(htmlFile, []byte(htmlContent), 0644); err != nil {
-		return nil, fmt.Errorf("write temp HTML: %w", err)
-	}
-
-	cmd := exec.Command("wkhtmltopdf",
-		"--page-size", "A4",
-		"--margin-top", "15mm",
-		"--margin-bottom", "15mm",
-		"--margin-left", "10mm",
-		"--margin-right", "10mm",
-		"--encoding", "UTF-8",
-		"--enable-local-file-access",
-		"--no-stop-slow-scripts",
-		"--quiet",
-		htmlFile, pdfFile,
-	)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("wkhtmltopdf: %v (output: %s)", err, string(output))
-	}
-
-	return os.ReadFile(pdfFile)
 }
 
 const htmlReportTemplate = `<!DOCTYPE html>
