@@ -27,6 +27,6 @@ COPY --from=builder /build/static /app/static
 
 RUN mkdir -p /app/instance/reports
 
-EXPOSE 8080
+EXPOSE 51111
 
 CMD ["/app/server"]
