@@ -62,7 +62,7 @@ make run
 make worker
 ```
 
-The server starts at http://localhost:8080. Log in with the superadmin credentials from `.env`.
+The server starts at http://localhost:51111 (override with `PORT` in `.env`). Log in with the superadmin credentials from `.env`. Both binaries load `.env` from the working directory automatically; real environment variables take precedence.
 
 ### Docker Compose
 
@@ -74,7 +74,7 @@ make deploy
 make logs
 ```
 
-Access at http://localhost:8080.
+Access at http://localhost:51111.
 
 ### Makefile Commands
 

@@ -104,7 +104,7 @@ start_dev() {
     
     print_header
     print_status "Development environment is ready!"
-    echo -e "${GREEN}Server:${NC} http://localhost:8080"
+    echo -e "${GREEN}Server:${NC} http://localhost:51111"
     echo -e "${GREEN}Login:${NC} firman / Ajkshkl12j3kljakdslfj21"
     echo -e "${GREEN}Server PID:${NC} $SERVER_PID"
     echo -e "${GREEN}Worker PID:${NC} $WORKER_PID"

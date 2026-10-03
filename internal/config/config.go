@@ -4,6 +4,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -15,23 +17,27 @@ type Config struct {
 	AccessTokenExpireMin int
 	NmapReportsDir       string
 	NmapWorkerPoolSize   int
-	SuperAdminUsername    string
+	SuperAdminUsername   string
 	SuperAdminPassword   string
 	SuperAdminEmail      string
 }
 
 var DefaultProfiles = map[string]string{
-	"quick_scan":       "-T4 -F",
-	"intense_scan":     "-T4 -A -v",
-	"intense_scan_Pn":  "-T4 -A -v -Pn",
-	"ping_scan":        "-sn",
-	"port_scan":        "-p 1-1000",
-	"service_scan":     "-sV",
-	"os_detection":     "-O",
-	"comprehensive":    "-T4 -A -v -p- -Pn",
+	"quick_scan":      "-T4 -F",
+	"intense_scan":    "-T4 -A -v",
+	"intense_scan_Pn": "-T4 -A -v -Pn",
+	"ping_scan":       "-sn",
+	"port_scan":       "-p 1-1000",
+	"service_scan":    "-sV",
+	"os_detection":    "-O",
+	"comprehensive":   "-T4 -A -v -p- -Pn",
 }
 
+// Load reads configuration from the environment. A .env file in the working
+// directory is loaded first if present; real environment variables take precedence.
 func Load() *Config {
+	_ = godotenv.Load()
+
 	debug, _ := strconv.ParseBool(getEnv("DEBUG", "false"))
 	expireMin, _ := strconv.Atoi(getEnv("ACCESS_TOKEN_EXPIRE_MINUTES", "120"))
 	poolSize, _ := strconv.Atoi(getEnv("NMAP_WORKER_POOL_SIZE", "2"))
@@ -45,7 +51,7 @@ func Load() *Config {
 		AccessTokenExpireMin: expireMin,
 		NmapReportsDir:       getEnv("NMAP_REPORTS_DIR", "instance/reports"),
 		NmapWorkerPoolSize:   poolSize,
-		SuperAdminUsername:    getEnv("SUPERADMIN_USERNAME", "admin"),
+		SuperAdminUsername:   getEnv("SUPERADMIN_USERNAME", "admin"),
 		SuperAdminPassword:   getEnv("SUPERADMIN_PASSWORD", "admin"),
 		SuperAdminEmail:      getEnv("SUPERADMIN_EMAIL", "admin@localhost"),
 	}
