@@ -6,4 +6,3 @@ graphify-out/
 .env
 *.db
 .*.swp
-node_modules/
