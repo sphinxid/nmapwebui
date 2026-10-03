@@ -5,3 +5,4 @@ graphify-out/
 .git/
 .env
 *.db
+node_modules

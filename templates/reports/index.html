@@ -1,103 +1,109 @@
 <!DOCTYPE html>
 <html lang="en">
 {{template "head" .}}
-<body class="bg-gray-900 text-gray-100 min-h-screen">
+<body>
 {{template "nav" .}}
-<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-<div class="flex items-center justify-between mb-6">
+
+<div class="page-header">
     <div>
-        <h1 class="text-2xl font-bold">Scan Reports</h1>
-        <p class="text-gray-400 text-sm mt-1">View and download scan results in multiple formats</p>
+        <h1 class="page-title">Reports</h1>
+        <p class="page-subtitle">Results of completed scans. Open a report to see what changed since the previous run.</p>
     </div>
-    <div class="flex items-center gap-1">
-        <span class="text-xs text-gray-500 mr-1">Per page:</span>
-        <button onclick="setPerPage(20)" data-pp="20" class="pp-btn px-2 py-0.5 rounded text-xs border border-emerald-500 bg-emerald-900 text-emerald-300">20</button>
-        <button onclick="setPerPage(50)" data-pp="50" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">50</button>
-        <button onclick="setPerPage(100)" data-pp="100" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">100</button>
-        <button onclick="setPerPage(500)" data-pp="500" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">500</button>
-    </div>
-</div>
-<div id="reportsContainer" class="space-y-4">
-    <div class="text-center text-gray-500 py-8">Loading reports...</div>
 </div>
 
-<div id="paginationControls" class="hidden flex items-center justify-between mt-4">
-    <span class="text-sm text-gray-400" id="pageInfo"></span>
-    <div class="flex items-center gap-2">
-        <button onclick="goPage(currentPage-1)" id="prevBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Prev</button>
-        <span class="text-sm text-gray-400" id="pageNums"></span>
-        <button onclick="goPage(currentPage+1)" id="nextBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Next</button>
+<div class="card p-3 mb-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+        <div class="lg:col-span-2">
+            <label class="label text-xs" for="searchInput">Search</label>
+            <div class="relative">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+                <input type="search" id="searchInput" class="input pl-9" placeholder="Task name, IP address or hostname…">
+            </div>
+        </div>
+        <div>
+            <label class="label text-xs" for="taskFilter">Task</label>
+            <select id="taskFilter" class="select"><option value="">All tasks</option></select>
+        </div>
+        <div>
+            <label class="label text-xs" for="fromDate">From</label>
+            <input type="date" id="fromDate" class="input">
+        </div>
+        <div>
+            <label class="label text-xs" for="toDate">To</label>
+            <input type="date" id="toDate" class="input">
+        </div>
+    </div>
+    <div class="flex items-center justify-between mt-3">
+        <button type="button" id="clearFilters" class="btn-ghost btn-sm invisible"><i class="fas fa-times"></i>Clear filters</button>
+        <div id="perPageHost" class="flex items-center"></div>
     </div>
 </div>
+
+<div id="reportsContainer" class="space-y-3"></div>
+<div id="paginationControls" class="hidden flex items-center justify-between mt-4"></div>
 
 <script>
-let currentPage = 1;
-let perPage = 20;
-let totalPages = 1;
+const container = document.getElementById('reportsContainer');
+const els = { q: document.getElementById('searchInput'), task: document.getElementById('taskFilter'), from: document.getElementById('fromDate'), to: document.getElementById('toDate') };
+els.q.value = getParam('q'); els.from.value = getParam('from'); els.to.value = getParam('to');
+const clearBtn = document.getElementById('clearFilters');
+const pager = new Paginator({ perPageHost: 'perPageHost', controlsHost: 'paginationControls', onChange: loadReports });
 
-function setPerPage(n) {
-    perPage = n;
-    currentPage = 1;
-    document.querySelectorAll('.pp-btn').forEach(b => {
-        const active = parseInt(b.dataset.pp) === n;
-        b.className = 'pp-btn px-2 py-0.5 rounded text-xs border ' + (active ? 'border-emerald-500 bg-emerald-900 text-emerald-300' : 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600');
-    });
-    loadReports();
-}
-function goPage(p) { if (p >= 1 && p <= totalPages) { currentPage = p; loadReports(); } }
+function filterValues() { return { q: els.q.value.trim(), task_id: els.task.value || getParam('task_id'), from: els.from.value, to: els.to.value }; }
+function syncClear() { const f = filterValues(); clearBtn.classList.toggle('invisible', !f.q && !f.task_id && !f.from && !f.to); }
+function filtersChanged() { pager.reset(); setParams(filterValues()); syncClear(); loadReports(); }
+let t; els.q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(filtersChanged, 300); });
+[els.task, els.from, els.to].forEach(el => el.addEventListener('change', filtersChanged));
+clearBtn.addEventListener('click', () => { els.q.value = ''; els.task.value = ''; els.from.value = ''; els.to.value = ''; filtersChanged(); });
 
-function updatePagination(data) {
-    totalPages = data.pages;
-    const controls = document.getElementById('paginationControls');
-    if (data.total <= data.per_page && data.page === 1) { controls.classList.add('hidden'); return; }
-    controls.classList.remove('hidden');
-    const start = (data.page - 1) * data.per_page + 1;
-    const end = Math.min(data.page * data.per_page, data.total);
-    document.getElementById('pageInfo').textContent = `Showing ${start}-${end} of ${data.total}`;
-    document.getElementById('pageNums').textContent = `Page ${data.page} of ${data.pages}`;
-    document.getElementById('prevBtn').disabled = data.page <= 1;
-    document.getElementById('nextBtn').disabled = data.page >= data.pages;
+async function loadTaskOptions() {
+    const r = await api('/api/scans/tasks/options');
+    if (!r.ok) return;
+    r.data.forEach(x => { const o = document.createElement('option'); o.value = x.id; o.textContent = x.name; els.task.appendChild(o); });
+    els.task.value = getParam('task_id'); syncClear();
 }
 
 async function loadReports() {
-    const res = await fetch(`/api/reports?page=${currentPage}&per_page=${perPage}`, { credentials: 'same-origin' });
-    if (!res.ok) { document.getElementById('reportsContainer').innerHTML = '<div class="text-red-400 text-center">Failed to load</div>'; return; }
-    const data = await res.json();
-    const reports = data.items || [];
-    const container = document.getElementById('reportsContainer');
-    if (reports.length === 0 && data.total === 0) {
-        container.innerHTML = '<div class="bg-gray-800 rounded-lg p-12 text-center"><i class="fas fa-file-alt text-4xl text-gray-600 mb-3"></i><p class="text-gray-500">No reports yet. Run a scan to generate one.</p></div>';
-        document.getElementById('paginationControls').classList.add('hidden');
+    container.innerHTML = `<div class="empty"><i class="fas fa-circle-notch fa-spin"></i>Loading reports…</div>`;
+    const f = filterValues();
+    const qs = Object.entries(f).map(([k, v]) => `${k}=${encodeURIComponent(v || '')}`).join('&');
+    const r = await api(`/api/reports?${pager.query()}&${qs}`);
+    if (!r.ok) { container.innerHTML = `<div class="empty text-red-400"><i class="fas fa-triangle-exclamation"></i>${escapeHtml(errorDetail(r, 'Failed to load reports'))}</div>`; return; }
+    const data = r.data, reports = data.items || [];
+    pager.update(data);
+    if (!reports.length) {
+        const filtered = f.q || f.task_id || f.from || f.to;
+        container.innerHTML = `<div class="card empty"><i class="fas ${filtered ? 'fa-search' : 'fa-file-lines'}"></i><p class="text-gray-300 font-medium">${filtered ? 'No reports match these filters' : 'No reports yet'}</p><p class="text-sm mt-1">${filtered ? 'Try widening the date range or clearing the search.' : 'Run a scan task and its report will appear here.'}</p>${filtered ? '' : '<a href="/tasks" class="btn-primary mt-4"><i class="fas fa-crosshairs"></i>Go to tasks</a>'}</div>`;
         return;
     }
-    container.innerHTML = reports.map(r => {
-        const hostCount = (r.Hosts || []).length;
-        const openPorts = (r.Hosts || []).flatMap(h => h.Ports || []).filter(p => p.State === 'open').length;
-        return `
-        <div class="bg-gray-800 rounded-lg border border-gray-700 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow hover:border-gray-600 transition">
-            <a href="/reports/${r.ID}" class="flex-1 group">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-lg bg-emerald-900/50 border border-emerald-800/50 flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-file-shield text-emerald-400"></i>
+    container.innerHTML = reports.map(r => `
+        <div class="card p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+            <a href="/reports/${r.id}" class="flex items-center gap-4 flex-1 min-w-0 group">
+                <div class="w-11 h-11 rounded-lg bg-primary-500/10 border border-primary-500/20 flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-file-shield text-primary-400"></i>
+                </div>
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-semibold text-white group-hover:text-primary-400">${escapeHtml(r.task_name || 'Unknown task')}</span>
+                        <span class="text-xs text-gray-500 font-mono">report #${r.id}</span>
                     </div>
-                    <div>
-                        <h3 class="font-semibold group-hover:text-emerald-400 transition">Report #${r.ID}</h3>
-                        <p class="text-sm text-gray-400">${hostCount} host${hostCount !== 1 ? 's' : ''} &bull; ${openPorts} open port${openPorts !== 1 ? 's' : ''} &bull; ${r.CreatedAt ? new Date(r.CreatedAt).toLocaleDateString() + ' ' + new Date(r.CreatedAt).toLocaleTimeString() : '-'}</p>
+                    <div class="text-sm text-gray-400 mt-0.5 flex flex-wrap gap-x-3">
+                        <span><i class="fas fa-server mr-1 text-gray-500"></i>${r.hosts_up}/${r.host_count} hosts up</span>
+                        <span><i class="fas fa-plug mr-1 text-gray-500"></i>${pluralize(r.open_ports, 'open port')}</span>
+                        <span>${timeCell(r.created_at)}</span>
                     </div>
                 </div>
             </a>
-            <div class="flex flex-wrap gap-2">
-                <a href="/reports/${r.ID}" class="inline-flex items-center bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-eye mr-1.5"></i>View</a>
-                <a href="/api/reports/${r.ID}/download/xml" class="inline-flex items-center bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-code mr-1.5"></i>XML</a>
-                <a href="/api/reports/${r.ID}/download/txt" class="inline-flex items-center bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-file-alt mr-1.5"></i>TXT</a>
-                <a href="/api/reports/${r.ID}/download/pdf" class="inline-flex items-center bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-file-pdf mr-1.5"></i>PDF</a>
+            <div class="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
+                <a href="/reports/${r.id}" class="btn-primary btn-sm"><i class="fas fa-eye"></i>View</a>
+                <a href="/api/reports/${r.id}/download/xml" class="btn-secondary btn-sm" title="Download nmap XML">XML</a>
+                <a href="/api/reports/${r.id}/download/txt" class="btn-secondary btn-sm" title="Download plain text">TXT</a>
+                <a href="/api/reports/${r.id}/download/pdf" class="btn-secondary btn-sm" title="Download PDF"><i class="fas fa-file-pdf text-red-400"></i>PDF</a>
             </div>
-        </div>`;
-    }).join('');
-    updatePagination(data);
+        </div>`).join('');
 }
+
+loadTaskOptions();
 loadReports();
 </script>
-</main>
-</body>
-</html>
+{{template "footer" .}}

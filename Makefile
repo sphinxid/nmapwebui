@@ -1,4 +1,4 @@
-.PHONY: build run worker clean test vet deploy restart logs down
+.PHONY: build run worker clean test vet deploy restart logs down css css-watch frontend
 
 # Build both binaries locally
 build:
@@ -12,6 +12,19 @@ run: build
 # Run the worker locally
 worker: build
 	./bin/worker
+
+# Frontend assets. The output (static/css/app.css, static/vendor/) is
+# committed, so these only need to run after changing templates, CSS or
+# upgrading a frontend dependency.
+frontend:
+	npm install --no-audit --no-fund
+	npm run build
+
+css:
+	npm run build:css
+
+css-watch:
+	npm run watch:css
 
 # Run go vet
 vet:

@@ -88,7 +88,7 @@ func extractEventType(payload string) string {
 }
 
 func containsTerminal(payload string) bool {
-	return contains(payload, `"status":"completed"`) || contains(payload, `"status":"failed"`)
+	return contains(payload, `"status":"completed"`) || contains(payload, `"status":"failed"`) || contains(payload, `"status":"cancelled"`)
 }
 
 func contains(s, substr string) bool {

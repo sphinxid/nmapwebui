@@ -67,11 +67,39 @@ func ExecuteScan(ctx context.Context, runID, taskID uint, cfg *config.Config) er
 	args = append(args, "-oX", xmlPath, "-oN", normalPath, "--stats-every", "5s")
 	args = append(args, targets...)
 
+	// A cancel request may have arrived while the run sat in the queue.
+	if CancelRequested(ctx, runID) {
+		cancelRun(ctx, runID)
+		return nil
+	}
+
 	publish(ctx, runID, "status", map[string]interface{}{
 		"status": "starting", "message": "Starting nmap scan",
 	})
 
-	cmd := exec.CommandContext(ctx, "nmap", args...)
+	// runCtx is cancelled either when the worker shuts down or when the API
+	// flags this run for cancellation; CommandContext then kills nmap.
+	runCtx, stopRun := context.WithCancel(ctx)
+	defer stopRun()
+	cancelled := false
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-runCtx.Done():
+				return
+			case <-ticker.C:
+				if CancelRequested(ctx, runID) {
+					cancelled = true
+					stopRun()
+					return
+				}
+			}
+		}
+	}()
+
+	cmd := exec.CommandContext(runCtx, "nmap", args...)
 	// nmap writes progress stats to stderr, so we need to capture both
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -121,8 +149,14 @@ func ExecuteScan(ctx context.Context, runID, taskID uint, cfg *config.Config) er
 		}
 	}
 
-	if err := cmd.Wait(); err != nil {
-		failRun(runID, fmt.Sprintf("nmap exited with error: %v", err))
+	waitErr := cmd.Wait()
+	stopRun()
+	if cancelled {
+		cancelRun(ctx, runID)
+		return nil
+	}
+	if waitErr != nil {
+		failRun(runID, fmt.Sprintf("nmap exited with error: %v", waitErr))
 		return nil
 	}
 
@@ -131,6 +165,7 @@ func ExecuteScan(ctx context.Context, runID, taskID uint, cfg *config.Config) er
 		return nil
 	}
 
+	ClearCancel(ctx, runID)
 	db.DB.Model(&models.ScanRun{}).Where("id = ?", runID).Updates(map[string]interface{}{
 		"status": "completed", "completed_at": time.Now(), "progress": 100,
 	})
@@ -160,6 +195,17 @@ func parseAndPublishProgress(ctx context.Context, runID uint, line string) {
 		db.DB.Model(&models.ScanRun{}).Where("id = ?", runID).Update("progress", pctInt)
 		publish(ctx, runID, "progress", map[string]interface{}{"progress": pctInt})
 	}
+}
+
+// cancelRun marks a run as cancelled by user request and notifies listeners.
+func cancelRun(ctx context.Context, runID uint) {
+	db.DB.Model(&models.ScanRun{}).Where("id = ?", runID).Updates(map[string]interface{}{
+		"status": "cancelled", "completed_at": time.Now(), "error_message": "Cancelled by user",
+	})
+	ClearCancel(ctx, runID)
+	publish(ctx, runID, "status", map[string]interface{}{
+		"status": "cancelled", "message": "Scan cancelled by user",
+	})
 }
 
 func failRun(runID uint, message string) {

@@ -126,7 +126,7 @@ func GetDashboardStats(c *gin.Context) {
 		Scan(&statusRows)
 
 	stats.StatusCounts = map[string]int64{
-		"queued": 0, "running": 0, "completed": 0, "failed": 0,
+		"queued": 0, "running": 0, "completed": 0, "failed": 0, "cancelled": 0,
 	}
 	for _, row := range statusRows {
 		stats.StatusCounts[row.Status] = row.Count

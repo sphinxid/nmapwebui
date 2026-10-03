@@ -2,392 +2,100 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{if .Title}}{{.Title}} - {{end}}NmapWebUI</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta name="color-scheme" content="dark">
+    <title>{{if .Title}}{{.Title}} · {{end}}NmapWebUI</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2310b981'/%3E%3Ccircle cx='16' cy='16' r='4' fill='white'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='white' stroke-width='2' stroke-dasharray='4 5'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="/static/css/app.css">
+    <link rel="stylesheet" href="/static/vendor/fontawesome/css/all.min.css">
     <script src="/static/js/common.js"></script>
-    <style>
-        :root {
-            --primary: #10b981;
-            --primary-dark: #059669;
-            --secondary: #3b82f6;
-            --accent: #f59e0b;
-            --danger: #ef4444;
-            --warning: #f59e0b;
-            --success: #10b981;
-            --info: #3b82f6;
-            --dark: #0f172a;
-            --dark-secondary: #1e293b;
-            --dark-tertiary: #334155;
-            --text-primary: #f1f5f9;
-            --text-secondary: #cbd5e1;
-            --text-muted: #94a3b8;
-            --border: #334155;
-            --gradient-primary: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            --gradient-secondary: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-            --gradient-accent: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-        }
-        
-        * {
-            box-sizing: border-box;
-        }
-        
-        body {
-            background: var(--dark);
-            color: var(--text-primary);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        }
-        
-        .glass-effect {
-            background: rgba(30, 41, 59, 0.8);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(51, 65, 85, 0.5);
-        }
-        
-        .gradient-primary {
-            background: var(--gradient-primary);
-        }
-        
-        .gradient-secondary {
-            background: var(--gradient-secondary);
-        }
-        
-        .gradient-accent {
-            background: var(--gradient-accent);
-        }
-        
-        .card-hover {
-            transition: all 0.3s ease;
-            border: 1px solid transparent;
-        }
-        
-        .card-hover:hover {
-            transform: translateY(-2px);
-            border-color: var(--primary);
-            box-shadow: 0 10px 25px rgba(16, 185, 129, 0.1);
-        }
-        
-        .sidebar-item {
-            transition: all 0.2s ease;
-            border-left: 3px solid transparent;
-        }
-        
-        .sidebar-item:hover {
-            background: rgba(16, 185, 129, 0.1);
-            border-left-color: var(--primary);
-        }
-        
-        .sidebar-item.active {
-            background: rgba(16, 185, 129, 0.15);
-            border-left-color: var(--primary);
-        }
-        
-        .metric-card {
-            background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(51, 65, 85, 0.9) 100%);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(51, 65, 85, 0.3);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .metric-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: var(--gradient-primary);
-        }
-        
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.025em;
-        }
-        
-        .status-running {
-            background: rgba(245, 158, 11, 0.2);
-            color: #fbbf24;
-            border: 1px solid rgba(245, 158, 11, 0.3);
-        }
-        
-        .status-completed {
-            background: rgba(16, 185, 129, 0.2);
-            color: #34d399;
-            border: 1px solid rgba(16, 185, 129, 0.3);
-        }
-        
-        .status-failed {
-            background: rgba(239, 68, 68, 0.2);
-            color: #f87171;
-            border: 1px solid rgba(239, 68, 68, 0.3);
-        }
-        
-        .status-queued {
-            background: rgba(148, 163, 184, 0.2);
-            color: #cbd5e1;
-            border: 1px solid rgba(148, 163, 184, 0.3);
-        }
-        
-        .btn-primary {
-            background: var(--gradient-primary);
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 0.375rem;
-            font-weight: 500;
-            transition: all 0.2s ease;
-            border: none;
-            cursor: pointer;
-        }
-        
-        .btn-primary:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-        }
-        
-        .btn-secondary {
-            background: var(--dark-secondary);
-            color: var(--text-primary);
-            padding: 0.5rem 1rem;
-            border-radius: 0.375rem;
-            font-weight: 500;
-            transition: all 0.2s ease;
-            border: 1px solid var(--border);
-            cursor: pointer;
-        }
-        
-        .btn-secondary:hover {
-            background: var(--dark-tertiary);
-            border-color: var(--primary);
-        }
-        
-        .progress-bar {
-            background: var(--dark-tertiary);
-            border-radius: 9999px;
-            overflow: hidden;
-            height: 0.5rem;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background: var(--gradient-primary);
-            transition: width 0.3s ease;
-        }
-        
-        .table-modern {
-            background: var(--dark-secondary);
-            border-radius: 0.5rem;
-            overflow: hidden;
-            border: 1px solid var(--border);
-        }
-        
-        .table-modern th {
-            background: var(--dark-tertiary);
-            color: var(--text-secondary);
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 0.75rem;
-            letter-spacing: 0.025em;
-            padding: 1rem;
-            text-align: left;
-        }
-        
-        .table-modern td {
-            padding: 1rem;
-            border-top: 1px solid var(--border);
-            color: var(--text-primary);
-        }
-        
-        .table-modern tbody tr:hover {
-            background: rgba(16, 185, 129, 0.05);
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        
-        .animate-pulse-slow {
-            animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-        
-        .scrollbar-custom::-webkit-scrollbar {
-            width: 6px;
-        }
-        
-        .scrollbar-custom::-webkit-scrollbar-track {
-            background: var(--dark-secondary);
-        }
-        
-        .scrollbar-custom::-webkit-scrollbar-thumb {
-            background: var(--dark-tertiary);
-            border-radius: 3px;
-        }
-        
-        .scrollbar-custom::-webkit-scrollbar-thumb:hover {
-            background: var(--primary);
-        }
-    </style>
 </head>
 {{end}}
 
 {{define "nav"}}
-<!-- Modern Sidebar Navigation -->
-<div class="flex h-screen bg-gray-950">
+<a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[70] btn-primary">Skip to content</a>
+<div class="min-h-screen lg:flex">
+    <!-- Mobile overlay -->
+    <div id="sidebarOverlay" class="fixed inset-0 z-30 bg-black/60 hidden lg:hidden"></div>
+
     <!-- Sidebar -->
-    <aside class="w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
-        <!-- Logo -->
-        <div class="p-6 border-b border-gray-800">
-            <div class="flex items-center space-x-3">
-                <div class="w-10 h-10 bg-gradient-primary rounded-lg flex items-center justify-center">
-                    <i class="fas fa-network-wired text-white text-lg"></i>
-                </div>
-                <div>
-                    <h1 class="text-xl font-bold text-white">NmapWebUI</h1>
-                    <p class="text-xs text-gray-400">Network Security Scanner</p>
-                </div>
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-64 bg-gray-900 border-r border-gray-800 flex flex-col transform -translate-x-full transition-transform duration-200 lg:translate-x-0 lg:sticky lg:top-0 lg:h-screen lg:flex-shrink-0" aria-label="Main navigation">
+        <div class="h-16 px-5 flex items-center gap-3 border-b border-gray-800">
+            <div class="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-network-wired text-white"></i>
             </div>
+            <div class="min-w-0">
+                <div class="text-base font-bold text-white leading-tight">NmapWebUI</div>
+                <div class="text-[11px] text-gray-500 leading-tight">Network scanner</div>
+            </div>
+            <button type="button" class="btn-icon ml-auto lg:hidden" aria-label="Close menu" onclick="toggleSidebar(false)"><i class="fas fa-times"></i></button>
         </div>
-        
-        <!-- Navigation -->
-        <nav class="flex-1 p-4 space-y-2 scrollbar-custom overflow-y-auto">
-            <a href="/" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white {{if eq .ActivePage "dashboard"}}active{{end}}">
-                <i class="fas fa-dashboard w-5 text-center"></i>
-                <span class="font-medium">Dashboard</span>
+
+        <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+            <a href="/" class="sidebar-link {{if eq .ActivePage "dashboard"}}active{{end}}" {{if eq .ActivePage "dashboard"}}aria-current="page"{{end}}>
+                <i class="fas fa-gauge-high w-5 text-center"></i><span>Dashboard</span>
             </a>
-            <a href="/targets" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white {{if eq .ActivePage "targets"}}active{{end}}">
-                <i class="fas fa-bullseye w-5 text-center"></i>
-                <span class="font-medium">Targets</span>
+            <a href="/targets" class="sidebar-link {{if eq .ActivePage "targets"}}active{{end}}" {{if eq .ActivePage "targets"}}aria-current="page"{{end}}>
+                <i class="fas fa-bullseye w-5 text-center"></i><span>Targets</span>
             </a>
-            <a href="/tasks" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white {{if eq .ActivePage "tasks"}}active{{end}}">
-                <i class="fas fa-crosshairs w-5 text-center"></i>
-                <span class="font-medium">Scan Tasks</span>
+            <a href="/tasks" class="sidebar-link {{if or (eq .ActivePage "tasks") (eq .ActivePage "tasks-create") (eq .ActivePage "tasks-view") (eq .ActivePage "tasks-run")}}active{{end}}" {{if eq .ActivePage "tasks"}}aria-current="page"{{end}}>
+                <i class="fas fa-crosshairs w-5 text-center"></i><span>Scan Tasks</span>
             </a>
-            <a href="/reports" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white {{if eq .ActivePage "reports"}}active{{end}}">
-                <i class="fas fa-file-alt w-5 text-center"></i>
-                <span class="font-medium">Reports</span>
+            <a href="/runs" class="sidebar-link {{if eq .ActivePage "runs"}}active{{end}}" {{if eq .ActivePage "runs"}}aria-current="page"{{end}}>
+                <i class="fas fa-play-circle w-5 text-center"></i><span>Scan Runs</span>
             </a>
-            <a href="/runs" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white {{if eq .ActivePage "runs"}}active{{end}}">
-                <i class="fas fa-play-circle w-5 text-center"></i>
-                <span class="font-medium">Scan Runs</span>
+            <a href="/reports" class="sidebar-link {{if or (eq .ActivePage "reports") (eq .ActivePage "reports-view")}}active{{end}}" {{if eq .ActivePage "reports"}}aria-current="page"{{end}}>
+                <i class="fas fa-file-lines w-5 text-center"></i><span>Reports</span>
             </a>
-            
             {{if .User}}{{if .User.IsAdmin}}
             <div class="pt-4 mt-4 border-t border-gray-800">
-                <h3 class="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Administration</h3>
-                <a href="/admin/users" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-amber-400 hover:text-amber-300 {{if eq .ActivePage "admin"}}active{{end}}">
-                    <i class="fas fa-users-cog w-5 text-center"></i>
-                    <span class="font-medium">User Management</span>
+                <div class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Administration</div>
+                <a href="/admin/users" class="sidebar-link {{if eq .ActivePage "admin-users"}}active{{end}}" {{if eq .ActivePage "admin-users"}}aria-current="page"{{end}}>
+                    <i class="fas fa-users-gear w-5 text-center"></i><span>Users</span>
                 </a>
             </div>
             {{end}}{{end}}
         </nav>
-        
-        <!-- User Profile -->
+
         {{if .User}}
-        <div class="p-4 border-t border-gray-800">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 bg-gradient-secondary rounded-full flex items-center justify-center">
-                        <i class="fas fa-user text-white text-sm"></i>
-                    </div>
-                    <div>
-                        <p class="text-sm font-medium text-white">{{.User.Username}}</p>
-                        <p class="text-xs text-gray-400">{{.User.Role}}</p>
-                    </div>
+        <div class="p-3 border-t border-gray-800">
+            <div class="flex items-center gap-3 px-2 py-1.5">
+                <div class="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-sm font-bold text-gray-200 flex-shrink-0">{{slice .User.Username 0 1}}</div>
+                <div class="min-w-0 flex-1">
+                    <div class="text-sm font-medium text-white truncate">{{.User.Username}}</div>
+                    <div class="text-xs text-gray-500 capitalize">{{.User.Role}}</div>
                 </div>
-                <button onclick="logout()" class="text-gray-400 hover:text-red-400 transition-colors" title="Logout">
-                    <i class="fas fa-sign-out-alt"></i>
-                </button>
+                <button type="button" onclick="logout()" class="btn-icon hover:text-red-400" title="Sign out" aria-label="Sign out"><i class="fas fa-right-from-bracket"></i></button>
             </div>
         </div>
         {{end}}
     </aside>
-    
-    <!-- Main Content Area -->
-    <div class="flex-1 flex flex-col overflow-hidden">
-        <!-- Top Bar -->
-        <header class="bg-gray-900 border-b border-gray-800 px-6 py-4">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-4">
-                    <h2 class="text-xl font-semibold text-white">{{if .Title}}{{.Title}}{{else}}Dashboard{{end}}</h2>
-                    <div id="statusIndicator" class="flex items-center space-x-2">
-                        <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span class="text-sm text-gray-400">System Online</span>
-                    </div>
+
+    <!-- Main column -->
+    <div class="flex-1 flex flex-col min-w-0">
+        <header class="sticky top-0 z-20 h-16 bg-gray-950/80 backdrop-blur border-b border-gray-800 px-4 sm:px-6 flex items-center gap-4">
+            <button type="button" id="sidebarToggle" class="btn-icon lg:hidden -ml-2" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false"><i class="fas fa-bars"></i></button>
+            <h2 class="text-base sm:text-lg font-semibold text-white truncate">{{if .Title}}{{.Title}}{{else}}Dashboard{{end}}</h2>
+            <div class="ml-auto flex items-center gap-4">
+                <div id="healthIndicator" class="flex items-center gap-2 text-xs text-gray-400" title="">
+                    <span data-dot class="w-2 h-2 rounded-full bg-gray-600"></span>
+                    <span data-label class="hidden sm:inline">Checking…</span>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <button onclick="toggleTheme()" class="text-gray-400 hover:text-white transition-colors" title="Toggle Theme">
-                        <i class="fas fa-moon"></i>
-                    </button>
-                    <button onclick="refreshPage()" class="text-gray-400 hover:text-white transition-colors" title="Refresh">
-                        <i class="fas fa-sync-alt"></i>
-                    </button>
-                    {{if not .User}}
-                    <a href="/login" class="btn-primary text-sm">
-                        <i class="fas fa-sign-in-alt mr-2"></i>Login
-                    </a>
-                    {{end}}
-                </div>
+                {{if not .User}}
+                <a href="/login" class="btn-primary btn-sm"><i class="fas fa-right-to-bracket"></i>Sign in</a>
+                {{end}}
             </div>
         </header>
-        
-        <!-- Page Content -->
-        <main class="flex-1 overflow-y-auto scrollbar-custom p-6">
+
+        <main id="main" class="flex-1 p-4 sm:p-6 lg:p-8">
+            <div class="max-w-7xl mx-auto">
 {{end}}
 
-<script>
-async function logout() {
-    try {
-        await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
-        window.location.href = '/login';
-    } catch (error) {
-        console.error('Logout error:', error);
-        window.location.href = '/login';
-    }
-}
-
-function toggleTheme() {
-    // Theme toggle functionality (placeholder)
-    document.body.classList.toggle('light-theme');
-}
-
-function refreshPage() {
-    window.location.reload();
-}
-
-// Auto-refresh functionality
-let autoRefreshInterval;
-function startAutoRefresh(interval = 30000) {
-    autoRefreshInterval = setInterval(() => {
-        const event = new CustomEvent('autoRefresh');
-        document.dispatchEvent(event);
-    }, interval);
-}
-
-function stopAutoRefresh() {
-    if (autoRefreshInterval) {
-        clearInterval(autoRefreshInterval);
-    }
-}
-
-// Initialize auto-refresh for dashboard-like pages
-document.addEventListener('DOMContentLoaded', () => {
-    if (window.location.pathname === '/' || window.location.pathname.includes('/dashboard')) {
-        startAutoRefresh();
-    }
-});
-</script>
-
 {{define "footer"}}
+            </div>
         </main>
     </div>
 </div>
+<div id="toastHost" class="fixed bottom-4 right-4 z-[60] flex flex-col gap-2 items-end" aria-live="polite"></div>
+</body>
+</html>
 {{end}}

@@ -1,433 +1,204 @@
 <!DOCTYPE html>
 <html lang="en">
 {{template "head" .}}
-<body class="bg-gray-950 text-gray-100 min-h-screen">
+<body>
 {{template "nav" .}}
-    <!-- Dashboard Header -->
-    <div class="mb-8">
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-subtitle">Overview of your scanning activity. Updates every 30 seconds.</p>
+    </div>
+    <div class="flex items-center gap-2">
+        <a href="/tasks/create" class="btn-primary"><i class="fas fa-plus"></i>New Task</a>
+    </div>
+</div>
+
+<!-- Metrics -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <a href="/tasks" class="card p-5 hover:border-gray-700 transition">
         <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-3xl font-bold text-white mb-2">Security Dashboard</h1>
-                <p class="text-gray-400">Real-time overview of network security scanning operations</p>
+            <span class="text-sm text-gray-400">Scan tasks</span>
+            <i class="fas fa-crosshairs text-primary-400"></i>
+        </div>
+        <div class="text-3xl font-bold text-white mt-2 tabular-nums" id="totalTasks">–</div>
+    </a>
+    <a href="/runs?status=running" class="card p-5 hover:border-gray-700 transition">
+        <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-400">Active scans</span>
+            <i class="fas fa-bolt text-amber-400"></i>
+        </div>
+        <div class="text-3xl font-bold text-white mt-2 tabular-nums" id="runningScans">–</div>
+    </a>
+    <a href="/reports" class="card p-5 hover:border-gray-700 transition">
+        <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-400">Reports</span>
+            <i class="fas fa-file-lines text-blue-400"></i>
+        </div>
+        <div class="text-3xl font-bold text-white mt-2 tabular-nums" id="totalReports">–</div>
+    </a>
+    <a href="/runs?status=failed" class="card p-5 hover:border-gray-700 transition">
+        <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-400">Failed runs</span>
+            <i class="fas fa-triangle-exclamation text-red-400"></i>
+        </div>
+        <div class="text-3xl font-bold text-white mt-2 tabular-nums" id="failedRuns">–</div>
+    </a>
+</div>
+
+<!-- Charts -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+    <div class="card lg:col-span-2">
+        <div class="card-header">
+            <h3 class="card-title">Completed scans</h3>
+            <div class="segment" role="group" aria-label="Chart period">
+                <button type="button" data-period="day">24h</button>
+                <button type="button" data-period="week" class="active">7 days</button>
+                <button type="button" data-period="month">30 days</button>
             </div>
-            <div class="flex items-center space-x-4">
-                <button onclick="refreshDashboard()" class="btn-primary">
-                    <i class="fas fa-sync-alt mr-2"></i>Refresh
-                </button>
-            </div>
+        </div>
+        <div class="card-body"><div class="h-56"><canvas id="activityChart" aria-label="Completed scans over time" role="img"></canvas></div></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h3 class="card-title">Run outcomes</h3><span class="text-xs text-gray-500">all time</span></div>
+        <div class="card-body"><div class="h-56"><canvas id="statusChart" aria-label="Run status distribution" role="img"></canvas></div></div>
+    </div>
+</div>
+
+<!-- Active scans -->
+<div id="activeScansSection" class="card mb-6 hidden">
+    <div class="card-header">
+        <div class="flex items-center gap-3">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+            <h3 class="card-title">Active scans</h3>
+            <span class="text-sm text-amber-300" id="activeScansCount"></span>
         </div>
     </div>
-
-    <!-- Key Metrics Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <!-- Total Tasks Card -->
-        <div class="metric-card rounded-xl p-6 card-hover">
-            <div class="flex items-center justify-between mb-4">
-                <div class="w-12 h-12 bg-gradient-primary rounded-lg flex items-center justify-center">
-                    <i class="fas fa-crosshairs text-white text-xl"></i>
-                </div>
-                <div class="text-right">
-                    <p class="text-2xl font-bold text-white" id="totalTasks">-</p>
-                    <p class="text-sm text-gray-400">Total Tasks</p>
-                </div>
-            </div>
-            <div class="flex items-center text-sm">
-                <i class="fas fa-chart-line text-green-400 mr-2"></i>
-                <span class="text-gray-400">Active scan configurations</span>
-            </div>
-        </div>
-
-        <!-- Active Scans Card -->
-        <div class="metric-card rounded-xl p-6 card-hover">
-            <div class="flex items-center justify-between mb-4">
-                <div class="w-12 h-12 gradient-accent rounded-lg flex items-center justify-center">
-                    <i class="fas fa-spinner text-white text-xl animate-pulse-slow"></i>
-                </div>
-                <div class="text-right">
-                    <p class="text-2xl font-bold text-white" id="runningScans">-</p>
-                    <p class="text-sm text-gray-400">Active Scans</p>
-                </div>
-            </div>
-            <div class="flex items-center text-sm">
-                <i class="fas fa-bolt text-amber-400 mr-2"></i>
-                <span class="text-gray-400">Currently executing</span>
-            </div>
-        </div>
-
-        <!-- Completed Reports Card -->
-        <div class="metric-card rounded-xl p-6 card-hover">
-            <div class="flex items-center justify-between mb-4">
-                <div class="w-12 h-12 gradient-secondary rounded-lg flex items-center justify-center">
-                    <i class="fas fa-file-alt text-white text-xl"></i>
-                </div>
-                <div class="text-right">
-                    <p class="text-2xl font-bold text-white" id="totalReports">-</p>
-                    <p class="text-sm text-gray-400">Reports</p>
-                </div>
-            </div>
-            <div class="flex items-center text-sm">
-                <i class="fas fa-check-circle text-blue-400 mr-2"></i>
-                <span class="text-gray-400">Completed scans</span>
-            </div>
-        </div>
-
+    <div class="table-wrap">
+        <table class="table">
+            <thead><tr><th>Run</th><th>Task</th><th>Status</th><th class="w-56">Progress</th><th>Started</th><th class="text-right">Actions</th></tr></thead>
+            <tbody id="activeScansBody"></tbody>
+        </table>
     </div>
+</div>
 
-<!-- Charts Section -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <!-- Scan Activity Chart -->
-        <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold text-white">Scan Activity</h3>
-                <div class="flex items-center space-x-2">
-                    <button onclick="changeChartPeriod('day')" class="chart-period-btn text-xs px-2 py-1 rounded bg-gray-800 text-gray-400 hover:text-white">Day</button>
-                    <button onclick="changeChartPeriod('week')" class="chart-period-btn text-xs px-2 py-1 rounded bg-primary text-white">Week</button>
-                    <button onclick="changeChartPeriod('month')" class="chart-period-btn text-xs px-2 py-1 rounded bg-gray-800 text-gray-400 hover:text-white">Month</button>
-                </div>
-            </div>
-            <div class="h-64">
-                <canvas id="activityChart"></canvas>
-            </div>
-        </div>
-
-        <!-- Scan Status Distribution -->
-        <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold text-white">Scan Status Distribution</h3>
-                <i class="fas fa-chart-pie text-blue-400"></i>
-            </div>
-            <div class="h-64">
-                <canvas id="vulnerabilityChart"></canvas>
-            </div>
-        </div>
+<!-- Recent runs -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Recent runs</h3>
+        <a href="/runs" class="text-sm text-primary-400 hover:text-primary-300">View all <i class="fas fa-arrow-right ml-1 text-xs"></i></a>
     </div>
-
-    <!-- Active Scans Section -->
-    <div id="activeScansSection" class="mb-8 hidden">
-        <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-gradient-to-r from-amber-500/10 to-orange-500/10">
-                <div class="flex items-center">
-                    <div class="w-3 h-3 bg-amber-500 rounded-full animate-pulse mr-3"></div>
-                    <h3 class="text-lg font-semibold text-white">Active Scans</h3>
-                    <span class="ml-3 text-sm text-amber-400" id="activeScansCount">0 running</span>
-                </div>
-                <button onclick="pauseAllScans()" class="text-sm text-amber-400 hover:text-amber-300">
-                    <i class="fas fa-pause mr-1"></i>Pause All
-                </button>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full">
-                    <thead class="bg-gray-800/50">
-                        <tr>
-                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Run ID</th>
-                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Task</th>
-                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
-                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Progress</th>
-                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Started</th>
-                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="activeScansBody" class="divide-y divide-gray-800"></tbody>
-                </table>
-            </div>
-        </div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead><tr><th>Task</th><th>Status</th><th class="w-56">Progress</th><th>Duration</th><th>Started</th><th class="text-right">Report</th></tr></thead>
+            <tbody id="recentRunsBody">{{/* filled by JS */}}</tbody>
+        </table>
     </div>
+</div>
 
-    <!-- Recent Scan Runs -->
-    <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
-            <h3 class="text-lg font-semibold text-white">Recent Scan Runs</h3>
-            <div class="flex items-center space-x-4">
-                <input type="text" placeholder="Search scans..." class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-primary">
-                <a href="/runs" class="text-primary hover:text-green-400 text-sm font-medium">
-                    View All <i class="fas fa-arrow-right ml-1"></i>
-                </a>
-            </div>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="w-full">
-                <thead class="bg-gray-800/50">
-                    <tr>
-                        <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Task</th>
-                        <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
-                        <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Progress</th>
-                        <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Duration</th>
-                        <th class="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Started</th>
-                    </tr>
-                </thead>
-                <tbody id="recentRunsBody" class="divide-y divide-gray-800">
-                    <tr>
-                        <td colspan="5" class="px-6 py-8 text-center text-gray-500">
-                            <i class="fas fa-spinner fa-spin mb-2"></i>
-                            <p>Loading scan data...</p>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
+<script src="/static/vendor/chart.umd.js"></script>
 <script>
-let activityChart, vulnerabilityChart;
+let activityChart, statusChart;
 let currentPeriod = 'week';
+document.getElementById('recentRunsBody').innerHTML = loadingRow(6);
+
+Chart.defaults.color = '#9ca3af';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
 
 async function loadDashboard() {
-    try {
-        const res = await fetch(`/api/dashboard/stats?period=${currentPeriod}`, { credentials: 'same-origin' });
-        if (!res.ok) return;
-        const stats = await res.json();
-
-        // Update metrics
-        document.getElementById('totalTasks').textContent = stats.total_tasks || 0;
-        document.getElementById('runningScans').textContent = stats.running_scans || 0;
-        document.getElementById('totalReports').textContent = stats.total_reports || 0;
-
-        // Update active scans section
-        updateActiveScans(stats.active_runs || []);
-
-        // Update recent runs
-        updateRecentRuns(stats.recent_runs || []);
-
-        // Update charts
-        updateCharts(stats.status_counts || {}, stats.activity || []);
-
-    } catch (error) {
-        console.error('Error loading dashboard:', error);
-    }
+    const r = await api(`/api/dashboard/stats?period=${currentPeriod}`);
+    if (!r.ok) { toast.error(errorDetail(r, 'Could not load dashboard data')); return; }
+    const s = r.data;
+    document.getElementById('totalTasks').textContent = s.total_tasks || 0;
+    document.getElementById('runningScans').textContent = s.running_scans || 0;
+    document.getElementById('totalReports').textContent = s.total_reports || 0;
+    document.getElementById('failedRuns').textContent = (s.status_counts && s.status_counts.failed) || 0;
+    renderActive(s.active_runs || []);
+    renderRecent(s.recent_runs || []);
+    renderActivity(s.activity || []);
+    renderStatus(s.status_counts || {});
 }
 
-function updateActiveScans(activeRuns) {
-    const activeSection = document.getElementById('activeScansSection');
-    const activeBody = document.getElementById('activeScansBody');
-    const activeCount = document.getElementById('activeScansCount');
-    
-    if (activeRuns.length > 0) {
-        activeSection.classList.remove('hidden');
-        activeCount.textContent = `${activeRuns.filter(r => r.Status === 'running').length} running`;
-        
-        activeBody.innerHTML = activeRuns.sort((a,b) => (b.ID || 0) - (a.ID || 0)).map(r => `
-            <tr class="hover:bg-gray-800/50 transition-colors">
-                <td class="px-6 py-4 text-sm font-mono text-gray-400">#${r.ID}</td>
-                <td class="px-6 py-4 text-sm">
-                    <a href="/tasks/view/${r.TaskID}" class="text-primary hover:text-green-400 font-medium">
-                        ${escapeHtml(r.TaskName || 'Unknown')}
-                    </a>
-                </td>
-                <td class="px-6 py-4 text-sm">${statusBadge(r.Status)}</td>
-                <td class="px-6 py-4 text-sm">
-                    <div class="flex items-center space-x-2">
-                        <div class="flex-1 progress-bar">
-                            <div class="progress-fill" style="width: ${r.Progress || 0}%"></div>
-                        </div>
-                        <span class="text-xs text-gray-400 min-w-[3rem] text-right">${r.Progress || 0}%</span>
-                    </div>
-                </td>
-                <td class="px-6 py-4 text-sm text-gray-400">${formatTime(r.StartedAt)}</td>
-                <td class="px-6 py-4 text-sm">
-                    <div class="flex items-center space-x-2">
-                        ${r.Status === 'running' ? 
-                            `<a href="/tasks/run/${r.ID}" class="text-amber-400 hover:text-amber-300">
-                                <i class="fas fa-broadcast-tower"></i> Live
-                            </a>` : 
-                            `<button onclick="viewDetails(${r.ID})" class="text-gray-400 hover:text-white">
-                                <i class="fas fa-eye"></i>
-                            </button>`
-                        }
-                    </div>
-                </td>
-            </tr>
-        `).join('');
-    } else {
-        activeSection.classList.add('hidden');
-    }
+function renderActive(runs) {
+    const section = document.getElementById('activeScansSection');
+    if (!runs.length) { section.classList.add('hidden'); return; }
+    section.classList.remove('hidden');
+    const running = runs.filter(r => r.Status === 'running').length;
+    document.getElementById('activeScansCount').textContent = `${pluralize(running, 'running')}${runs.length - running ? `, ${runs.length - running} queued` : ''}`;
+    document.getElementById('activeScansBody').innerHTML = runs.map(r => `
+        <tr>
+            <td class="font-mono text-gray-400">#${r.ID}</td>
+            <td><a href="/tasks/view/${r.TaskID}" class="text-white hover:text-primary-400 font-medium">${escapeHtml(r.TaskName || 'Unknown')}</a></td>
+            <td>${statusBadge(r.Status)}</td>
+            <td>${progressBar(r.Progress, r.Status)}</td>
+            <td>${timeCell(r.StartedAt)}</td>
+            <td class="text-right whitespace-nowrap">
+                <a href="/tasks/run/${r.ID}" class="btn-secondary btn-xs"><i class="fas fa-tower-broadcast"></i>Live</a>
+                <button type="button" class="btn-danger-ghost btn-xs" onclick="cancelRun(${r.ID})"><i class="fas fa-ban"></i>Cancel</button>
+            </td>
+        </tr>`).join('');
 }
 
-function updateRecentRuns(allRuns) {
-    const recentRuns = allRuns.sort((a,b) => (b.ID || 0) - (a.ID || 0)).slice(0, 10);
+function renderRecent(runs) {
     const tbody = document.getElementById('recentRunsBody');
-    
-    if (recentRuns.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="5" class="px-6 py-8 text-center text-gray-500">
-                    <i class="fas fa-inbox text-4xl mb-2"></i>
-                    <p>No scan runs yet</p>
-                </td>
-            </tr>
-        `;
+    if (!runs.length) {
+        tbody.innerHTML = emptyRow(6, 'fa-inbox', 'No scans have run yet.', '<a href="/tasks" class="text-primary-400 hover:underline text-sm">Go to tasks</a>');
         return;
     }
-    
-    tbody.innerHTML = recentRuns.map(r => {
-        const duration = r.StartedAt ? calculateDuration(r.StartedAt, r.CompletedAt) : '-';
-        return `
-            <tr class="hover:bg-gray-800/50 transition-colors">
-                <td class="px-6 py-4 text-sm">
-                    <a href="/tasks/view/${r.TaskID}" class="text-primary hover:text-green-400 font-medium">
-                        ${escapeHtml(r.TaskName || 'Unknown')}
-                    </a>
-                </td>
-                <td class="px-6 py-4 text-sm">${statusBadge(r.Status)}</td>
-                <td class="px-6 py-4 text-sm">
-                    <div class="flex items-center space-x-2">
-                        <div class="flex-1 progress-bar">
-                            <div class="progress-fill ${r.Status === 'completed' ? 'bg-green-500' : ''}" style="width: ${r.Progress || 0}%"></div>
-                        </div>
-                        <span class="text-xs text-gray-400 min-w-[3rem] text-right">${r.Progress || 0}%</span>
-                    </div>
-                </td>
-                <td class="px-6 py-4 text-sm text-gray-400">${duration}</td>
-                <td class="px-6 py-4 text-sm text-gray-400">${formatTime(r.StartedAt)}</td>
-            </tr>
-        `;
-    }).join('');
+    tbody.innerHTML = runs.map(r => `
+        <tr>
+            <td><a href="/tasks/view/${r.TaskID}" class="text-white hover:text-primary-400 font-medium">${escapeHtml(r.TaskName || 'Unknown')}</a></td>
+            <td>${statusBadge(r.Status)}</td>
+            <td>${progressBar(r.Progress, r.Status)}</td>
+            <td class="text-gray-400 tabular-nums">${r.StartedAt ? duration(r.StartedAt, r.CompletedAt) : '-'}</td>
+            <td>${timeCell(r.StartedAt || r.CreatedAt)}</td>
+            <td class="text-right">${r.Status === 'running' || r.Status === 'queued'
+                ? `<a href="/tasks/run/${r.ID}" class="btn-secondary btn-xs"><i class="fas fa-tower-broadcast"></i>Live</a>`
+                : `<a href="/runs?task_id=${r.TaskID}" class="text-sm text-gray-400 hover:text-white">Runs</a>`}</td>
+        </tr>`).join('');
 }
 
-function updateActivityChart(activity) {
-    const ctx1 = document.getElementById('activityChart').getContext('2d');
+function renderActivity(activity) {
+    const ctx = document.getElementById('activityChart').getContext('2d');
     if (activityChart) activityChart.destroy();
-
-    const labels = activity.map(d => d.date);
-    const activityData = activity.map(d => d.count);
-
-    activityChart = new Chart(ctx1, {
+    const grad = ctx.createLinearGradient(0, 0, 0, 220);
+    grad.addColorStop(0, 'rgba(16,185,129,0.35)'); grad.addColorStop(1, 'rgba(16,185,129,0)');
+    activityChart = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Scans Completed',
-                data: activityData,
-                borderColor: '#10b981',
-                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                tension: 0.4,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                    ticks: { color: '#9ca3af' }
-                },
-                x: {
-                    grid: { display: false },
-                    ticks: { color: '#9ca3af' }
-                }
-            }
-        }
+        data: { labels: activity.map(d => d.date), datasets: [{ label: 'Completed', data: activity.map(d => d.count), borderColor: '#10b981', backgroundColor: grad, fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 4, borderWidth: 2 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false }, ticks: { maxTicksLimit: 8, maxRotation: 0 } } } }
     });
 }
 
-function updateCharts(statusCounts, activity) {
-    updateActivityChart(activity);
-
-    // Scan Status Distribution Chart
-    const ctx2 = document.getElementById('vulnerabilityChart').getContext('2d');
-    if (vulnerabilityChart) vulnerabilityChart.destroy();
-
-    vulnerabilityChart = new Chart(ctx2, {
+function renderStatus(counts) {
+    const ctx = document.getElementById('statusChart').getContext('2d');
+    if (statusChart) statusChart.destroy();
+    const order = ['completed', 'running', 'queued', 'failed', 'cancelled'];
+    const colors = { completed: '#10b981', running: '#f59e0b', queued: '#6b7280', failed: '#ef4444', cancelled: '#475569' };
+    statusChart = new Chart(ctx, {
         type: 'doughnut',
-        data: {
-            labels: ['Queued', 'Running', 'Completed', 'Failed'],
-            datasets: [{
-                data: [statusCounts.queued || 0, statusCounts.running || 0, statusCounts.completed || 0, statusCounts.failed || 0],
-                backgroundColor: [
-                    '#6b7280', // Gray for queued
-                    '#3b82f6', // Blue for running
-                    '#10b981', // Green for completed
-                    '#ef4444'  // Red for failed
-                ],
-                borderWidth: 0
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'right',
-                    labels: { color: '#9ca3af' }
-                }
-            }
-        }
+        data: { labels: order.map(k => STATUS_META[k].label), datasets: [{ data: order.map(k => counts[k] || 0), backgroundColor: order.map(k => colors[k]), borderWidth: 0, hoverOffset: 4 }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, padding: 12 } } } }
     });
 }
 
-function statusBadge(status) {
-    const badges = {
-        queued: '<span class="status-badge status-queued"><i class="fas fa-clock mr-1"></i>Queued</span>',
-        running: '<span class="status-badge status-running"><i class="fas fa-spinner fa-spin mr-1"></i>Running</span>',
-        completed: '<span class="status-badge status-completed"><i class="fas fa-check mr-1"></i>Completed</span>',
-        failed: '<span class="status-badge status-failed"><i class="fas fa-times mr-1"></i>Failed</span>'
-    };
-    return badges[status] || badges.queued;
+document.querySelectorAll('[data-period]').forEach(btn => btn.addEventListener('click', async () => {
+    currentPeriod = btn.dataset.period;
+    document.querySelectorAll('[data-period]').forEach(b => b.classList.toggle('active', b === btn));
+    const r = await api(`/api/dashboard/stats?period=${currentPeriod}`);
+    if (r.ok) renderActivity(r.data.activity || []);
+}));
+
+async function cancelRun(id) {
+    if (!await confirmDialog({ title: `Cancel scan run #${id}?`, message: 'The nmap process will be killed and no report will be produced.', confirmText: 'Cancel scan', danger: true })) return;
+    const r = await api(`/api/scans/runs/${id}/cancel`, { method: 'POST' });
+    if (r.ok) { toast.success(r.data.detail); setTimeout(loadDashboard, 1500); }
+    else toast.error(errorDetail(r, 'Could not cancel the scan'));
 }
 
-function formatTime(timestamp) {
-    if (!timestamp) return '-';
-    return new Date(timestamp).toLocaleString();
-}
-
-function calculateDuration(start, end) {
-    if (!start) return '-';
-    const startTime = new Date(start);
-    const endTime = end ? new Date(end) : new Date();
-    const diff = endTime - startTime;
-    
-    if (diff < 60000) return `${Math.floor(diff / 1000)}s`;
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
-    return `${Math.floor(diff / 3600000)}h ${Math.floor((diff % 3600000) / 60000)}m`;
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div'); 
-    div.textContent = text; 
-    return div.innerHTML;
-}
-
-function refreshDashboard() {
-    loadDashboard();
-}
-
-
-function changeChartPeriod(period) {
-    currentPeriod = period;
-
-    // Update button styles
-    document.querySelectorAll('.chart-period-btn').forEach(btn => {
-        btn.classList.remove('bg-primary', 'text-white');
-        btn.classList.add('bg-gray-800', 'text-gray-400');
-    });
-    event.target.classList.remove('bg-gray-800', 'text-gray-400');
-    event.target.classList.add('bg-primary', 'text-white');
-
-    // Reload only the activity chart for the new period
-    fetch(`/api/dashboard/stats?period=${currentPeriod}`, { credentials: 'same-origin' })
-        .then(r => r.json())
-        .then(stats => updateActivityChart(stats.activity || []))
-        .catch(err => console.error('Error loading chart data:', err));
-}
-
-function pauseAllScans() {
-    // Pause all scans functionality (placeholder)
-    alert('Pause all scans functionality coming soon!');
-}
-
-function viewDetails(runId) {
-    window.location.href = `/tasks/run/${runId}`;
-}
-
-// Auto-refresh
 loadDashboard();
 setInterval(loadDashboard, 30000);
-
-// Listen for auto-refresh events
-document.addEventListener('autoRefresh', loadDashboard);
 </script>
 {{template "footer" .}}
