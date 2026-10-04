@@ -28,7 +28,7 @@
 <div class="card">
     <div class="table-wrap">
         <table class="table">
-            <thead><tr><th>Run</th><th>Task</th><th>Status</th><th class="w-56">Progress</th><th>Started</th><th>Duration</th><th>Report</th><th class="text-right">Actions</th></tr></thead>
+            <thead><tr><th data-sort="id" data-sort-default="desc">Run</th><th data-sort="task">Task</th><th data-sort="status">Status</th><th class="w-56">Progress</th><th data-sort="started" data-sort-default="desc">Started</th><th data-sort="duration" data-sort-default="desc">Duration</th><th>Report</th><th class="text-right">Actions</th></tr></thead>
             <tbody id="runsBody"></tbody>
         </table>
     </div>
@@ -42,6 +42,9 @@ const statusFilter = document.getElementById('statusFilter');
 const clearBtn = document.getElementById('clearFilters');
 statusFilter.value = getParam('status');
 const pager = new Paginator({ perPageHost: 'perPageHost', controlsHost: 'paginationControls', onChange: loadRuns });
+let runsCache = [], runSort = { key: 'id', dir: 'desc' };
+const runAcc = { id: r => r.ID, task: r => (r.Task && r.Task.Name) || '', status: r => r.Status, started: r => r.StartedAt || r.CreatedAt, duration: r => r.StartedAt ? (new Date(r.CompletedAt || Date.now()) - new Date(r.StartedAt)) : -1 };
+initSortable(document.querySelector('table'), (key, dir) => { runSort = { key, dir }; renderRuns(); }, runSort);
 
 async function loadTaskOptions() {
     const r = await api('/api/scans/tasks/options');
@@ -60,9 +63,14 @@ async function loadRuns() {
     tbody.innerHTML = loadingRow(8);
     const r = await api(`/api/scans/runs?${pager.query()}&status=${statusFilter.value}&task_id=${taskFilter.value || getParam('task_id')}`);
     if (!r.ok) { tbody.innerHTML = emptyRow(8, 'fa-triangle-exclamation', errorDetail(r, 'Failed to load runs')); return; }
-    const data = r.data, runs = data.items || [];
+    const data = r.data; runsCache = data.items || [];
     pager.update(data);
-    if (!runs.length) { tbody.innerHTML = emptyRow(8, 'fa-inbox', data.total === 0 && !statusFilter.value && !taskFilter.value ? 'No scans have run yet.' : 'No runs match these filters.'); return; }
+    if (!runsCache.length) { tbody.innerHTML = emptyRow(8, 'fa-inbox', data.total === 0 && !statusFilter.value && !taskFilter.value ? 'No scans have run yet.' : 'No runs match these filters.'); return; }
+    renderRuns();
+}
+
+function renderRuns() {
+    const runs = sortRows(runsCache, runAcc[runSort.key] || runAcc.id, runSort.dir);
     tbody.innerHTML = runs.map(r => {
         const task = r.Task || {};
         const active = r.Status === 'running' || r.Status === 'queued';

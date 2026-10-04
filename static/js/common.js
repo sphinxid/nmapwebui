@@ -387,3 +387,282 @@ document.addEventListener('DOMContentLoaded', () => {
     // Close the drawer when resizing up to desktop so it never sticks open.
     window.addEventListener('resize', () => { if (window.innerWidth >= 1024) toggleSidebar(false); });
 });
+
+// ---------------------------------------------------------------------------
+// Density (compact / comfortable), applied before first paint
+// ---------------------------------------------------------------------------
+
+(function applyDensity() {
+    try { if (localStorage.getItem('ui.density') === 'compact') document.documentElement.classList.add('density-compact'); } catch (e) {}
+})();
+
+function toggleDensity() {
+    const compact = document.documentElement.classList.toggle('density-compact');
+    try { localStorage.setItem('ui.density', compact ? 'compact' : 'comfortable'); } catch (e) {}
+    const btn = document.getElementById('densityToggle');
+    if (btn) btn.setAttribute('aria-pressed', String(compact));
+    toast.info(compact ? 'Compact density' : 'Comfortable density', 1500);
+}
+
+// ---------------------------------------------------------------------------
+// Clipboard, badges, numbers
+// ---------------------------------------------------------------------------
+
+async function copyText(text, label) {
+    try { await navigator.clipboard.writeText(text); toast.success(`Copied ${label || text}`, 1500); }
+    catch (e) { toast.error('Clipboard not available'); }
+}
+
+function copyButton(text, label) {
+    return `<button type="button" class="copy-btn" onclick="event.stopPropagation(); copyText('${escapeHtml(text).replace(/'/g, '&#39;')}', '${escapeHtml(label || '')}')" title="Copy ${escapeHtml(label || text)}" aria-label="Copy ${escapeHtml(label || text)}"><i class="far fa-copy"></i></button>`;
+}
+
+/** Badge for a notable (exposed) service. n = { label, severity }. */
+function notableBadge(n, extra = '') {
+    if (!n) return '';
+    const cls = n.severity === 'high' ? 'badge-red' : 'badge-amber';
+    const icon = n.severity === 'high' ? 'fa-triangle-exclamation' : 'fa-circle-exclamation';
+    return `<span class="${cls} ${extra}" title="${escapeHtml(n.label)} — ${n.severity} exposure"><i class="fas ${icon} text-[10px]"></i>${escapeHtml(n.label)}</span>`;
+}
+
+function severityDot(sev) {
+    if (!sev) return '<span class="sev-dot bg-gray-700" title="No notable services"></span>';
+    return `<span class="sev-dot ${sev === 'high' ? 'bg-red-500' : 'bg-amber-400'}" title="${sev} exposure"></span>`;
+}
+
+function fmtNum(n) { return Number(n || 0).toLocaleString(); }
+
+// ---------------------------------------------------------------------------
+// Sortable tables (client side, over the currently loaded rows)
+// ---------------------------------------------------------------------------
+
+/**
+ * Wire <th data-sort="key"> headers. onChange(key, dir) re-renders.
+ * Returns the state object so callers can read current sort.
+ */
+function initSortable(table, onChange, initial = {}) {
+    const state = { key: initial.key || null, dir: initial.dir || 'asc' };
+    const ths = table.querySelectorAll('th[data-sort]');
+    const paint = () => ths.forEach(th => {
+        const active = th.dataset.sort === state.key;
+        th.classList.toggle('sorted', active);
+        th.setAttribute('aria-sort', active ? (state.dir === 'asc' ? 'ascending' : 'descending') : 'none');
+        th.querySelector('.sort-ind') && th.querySelector('.sort-ind').remove();
+        const ind = document.createElement('i');
+        ind.className = `sort-ind fas ${active ? (state.dir === 'asc' ? 'fa-arrow-up-short-wide' : 'fa-arrow-down-wide-short') : 'fa-sort'}`;
+        th.appendChild(ind);
+    });
+    ths.forEach(th => {
+        th.tabIndex = 0;
+        const go = () => {
+            if (state.key === th.dataset.sort) state.dir = state.dir === 'asc' ? 'desc' : 'asc';
+            else { state.key = th.dataset.sort; state.dir = th.dataset.sortDefault || 'asc'; }
+            paint(); onChange(state.key, state.dir);
+        };
+        th.addEventListener('click', go);
+        th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    });
+    paint();
+    return state;
+}
+
+/** Sort a copy of rows by accessor(row) with natural ordering for numbers/dates/strings. */
+function sortRows(rows, accessor, dir = 'asc') {
+    const mul = dir === 'desc' ? -1 : 1;
+    return rows.slice().sort((a, b) => {
+        let va = accessor(a), vb = accessor(b);
+        if (va === null || va === undefined || va === '') return 1;
+        if (vb === null || vb === undefined || vb === '') return -1;
+        if (va instanceof Date) va = va.getTime();
+        if (vb instanceof Date) vb = vb.getTime();
+        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * mul;
+        return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * mul;
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Side drawer (detail panels)
+// ---------------------------------------------------------------------------
+
+function openDrawer({ title, subtitle = '', body = '', width = 'max-w-2xl' }) {
+    let d = document.getElementById('drawer');
+    if (!d) {
+        d = document.createElement('div');
+        d.id = 'drawer';
+        d.className = 'drawer hidden';
+        d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true');
+        d.innerHTML = `<div class="drawer-backdrop"></div><aside class="drawer-panel"><header class="drawer-header"><div class="min-w-0"><h2 class="text-lg font-semibold text-white truncate" id="drawerTitle"></h2><p class="text-xs text-gray-400 mt-0.5" id="drawerSubtitle"></p></div><button type="button" class="btn-icon" onclick="closeDrawer()" aria-label="Close panel"><i class="fas fa-times"></i></button></header><div class="drawer-body" id="drawerBody"></div></aside>`;
+        d.querySelector('.drawer-backdrop').addEventListener('click', closeDrawer);
+        document.body.appendChild(d);
+    }
+    d.querySelector('.drawer-panel').className = `drawer-panel ${width}`;
+    document.getElementById('drawerTitle').innerHTML = title;
+    document.getElementById('drawerSubtitle').innerHTML = subtitle;
+    document.getElementById('drawerBody').innerHTML = body;
+    d.classList.remove('hidden');
+    requestAnimationFrame(() => d.classList.add('open'));
+    document.body.classList.add('overflow-hidden');
+    _modalStack.push(d);
+    return d;
+}
+function setDrawerBody(html) { const b = document.getElementById('drawerBody'); if (b) b.innerHTML = html; }
+function closeDrawer() {
+    const d = document.getElementById('drawer');
+    if (!d || d.classList.contains('hidden')) return;
+    d.classList.remove('open');
+    setTimeout(() => d.classList.add('hidden'), 180);
+    const i = _modalStack.indexOf(d); if (i >= 0) _modalStack.splice(i, 1);
+    if (_modalStack.length === 0) document.body.classList.remove('overflow-hidden');
+    if (window.location.search.includes('ip=')) setParams({ ip: '' });
+}
+// Escape closes the drawer too (modal stack handler checks data-static only).
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { const d = document.getElementById('drawer'); if (d && !d.classList.contains('hidden') && _modalStack[_modalStack.length - 1] === d) closeDrawer(); } }, true);
+
+// ---------------------------------------------------------------------------
+// Command palette + keyboard shortcuts
+// ---------------------------------------------------------------------------
+
+const PALETTE_ACTIONS = [
+    { title: 'Go to Dashboard', icon: 'fa-gauge-high', url: '/', keys: 'g d' },
+    { title: 'Go to Hosts', icon: 'fa-server', url: '/hosts', keys: 'g h' },
+    { title: 'Go to Targets', icon: 'fa-bullseye', url: '/targets', keys: 'g a' },
+    { title: 'Go to Scan Tasks', icon: 'fa-crosshairs', url: '/tasks', keys: 'g t' },
+    { title: 'Go to Scan Runs', icon: 'fa-play-circle', url: '/runs', keys: 'g r' },
+    { title: 'Go to Reports', icon: 'fa-file-lines', url: '/reports', keys: 'g p' },
+    { title: 'Go to Settings', icon: 'fa-gear', url: '/settings', keys: 'g s' },
+    { title: 'New scan task', icon: 'fa-plus', url: '/tasks/create', keys: 'n' },
+    { title: 'Show running scans', icon: 'fa-bolt', url: '/runs?status=running' },
+    { title: 'Show hosts with high exposure', icon: 'fa-triangle-exclamation', url: '/hosts?notable=high' },
+    { title: 'Toggle compact density', icon: 'fa-table-cells', run: () => toggleDensity(), keys: 'd' },
+    { title: 'Keyboard shortcuts', icon: 'fa-keyboard', run: () => showShortcuts(), keys: '?' },
+    { title: 'Sign out', icon: 'fa-right-from-bracket', run: () => logout() },
+];
+
+let _palette = null, _paletteItems = [], _paletteIndex = 0, _paletteTimer = null, _paletteSeq = 0;
+
+function openPalette(prefill = '') {
+    if (!_palette) {
+        _palette = document.createElement('div');
+        _palette.id = 'palette';
+        _palette.className = 'palette hidden';
+        _palette.setAttribute('role', 'dialog'); _palette.setAttribute('aria-modal', 'true'); _palette.setAttribute('aria-label', 'Command palette');
+        _palette.innerHTML = `<div class="palette-panel">
+            <div class="palette-input"><i class="fas fa-search text-gray-500"></i><input type="text" id="paletteInput" placeholder="Search hosts, tasks, reports… or type a command" autocomplete="off" spellcheck="false" aria-controls="paletteList" aria-autocomplete="list"><kbd>esc</kbd></div>
+            <div class="palette-list" id="paletteList" role="listbox"></div>
+            <div class="palette-foot"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>?</kbd> all shortcuts</span></div></div>`;
+        document.body.appendChild(_palette);
+        _palette.addEventListener('click', e => { if (e.target === _palette) closePalette(); });
+        const input = _palette.querySelector('#paletteInput');
+        input.addEventListener('input', () => { clearTimeout(_paletteTimer); _paletteTimer = setTimeout(() => renderPalette(input.value), 120); });
+        input.addEventListener('keydown', e => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); movePalette(1); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); movePalette(-1); }
+            else if (e.key === 'Enter') { e.preventDefault(); const it = _paletteItems[_paletteIndex]; if (it) runPaletteItem(it); }
+            else if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
+        });
+    }
+    _palette.classList.remove('hidden');
+    _modalStack.push(_palette);
+    document.body.classList.add('overflow-hidden');
+    const input = _palette.querySelector('#paletteInput');
+    input.value = prefill; input.focus(); input.select();
+    renderPalette(prefill);
+}
+function closePalette() {
+    if (!_palette) return;
+    _palette.classList.add('hidden');
+    const i = _modalStack.indexOf(_palette); if (i >= 0) _modalStack.splice(i, 1);
+    if (_modalStack.length === 0) document.body.classList.remove('overflow-hidden');
+}
+function movePalette(delta) {
+    if (!_paletteItems.length) return;
+    _paletteIndex = (_paletteIndex + delta + _paletteItems.length) % _paletteItems.length;
+    paintPaletteSelection();
+}
+function paintPaletteSelection() {
+    _palette.querySelectorAll('.palette-item').forEach((el, i) => { el.classList.toggle('active', i === _paletteIndex); el.setAttribute('aria-selected', String(i === _paletteIndex)); if (i === _paletteIndex) el.scrollIntoView({ block: 'nearest' }); });
+}
+function runPaletteItem(it) {
+    closePalette();
+    if (it.run) it.run(); else if (it.url) window.location.href = it.url;
+}
+async function renderPalette(q) {
+    const list = _palette.querySelector('#paletteList');
+    const seq = ++_paletteSeq;
+    const ql = q.trim().toLowerCase();
+    const actions = PALETTE_ACTIONS.filter(a => !ql || a.title.toLowerCase().includes(ql));
+    let groups = [{ title: 'Actions', items: actions.map(a => ({ ...a, type: 'action' })) }];
+    if (ql.length >= 1) {
+        const r = await api(`/api/search?q=${encodeURIComponent(q.trim())}`);
+        if (seq !== _paletteSeq) return;
+        if (r.ok) {
+            const d = r.data, icon = { task: 'fa-crosshairs', group: 'fa-bullseye', host: 'fa-server', report: 'fa-file-lines', run: 'fa-play-circle' };
+            const mk = hits => hits.map(h => ({ title: h.title, subtitle: h.subtitle, url: h.url, icon: icon[h.type] || 'fa-circle', type: h.type }));
+            if (d.hosts.length) groups.unshift({ title: 'Hosts', items: mk(d.hosts) });
+            if (d.tasks.length) groups.unshift({ title: 'Scan tasks', items: mk(d.tasks) });
+            if (d.reports.length) groups.unshift({ title: 'Reports & runs', items: mk(d.reports) });
+            if (d.groups.length) groups.push({ title: 'Target groups', items: mk(d.groups) });
+        }
+    }
+    _paletteItems = groups.flatMap(g => g.items);
+    _paletteIndex = 0;
+    if (!_paletteItems.length) { list.innerHTML = `<div class="px-4 py-8 text-center text-sm text-gray-500">No matches for “${escapeHtml(q)}”</div>`; return; }
+    let idx = 0;
+    list.innerHTML = groups.filter(g => g.items.length).map(g => `<div class="palette-group">${escapeHtml(g.title)}</div>` + g.items.map(it => {
+        const i = idx++;
+        return `<div class="palette-item" role="option" data-i="${i}" aria-selected="false">
+            <i class="fas ${it.icon} w-4 text-center text-gray-500"></i>
+            <span class="flex-1 min-w-0 truncate ${it.type === 'host' ? 'font-mono' : ''}">${escapeHtml(it.title)}${it.subtitle ? `<span class="text-gray-500 ml-2 font-sans">${escapeHtml(it.subtitle)}</span>` : ''}</span>
+            ${it.keys ? `<span class="hidden sm:flex gap-1">${it.keys.split(' ').map(k => `<kbd>${k}</kbd>`).join('')}</span>` : ''}</div>`;
+    }).join('')).join('');
+    list.querySelectorAll('.palette-item').forEach(el => {
+        el.addEventListener('mousemove', () => { _paletteIndex = +el.dataset.i; paintPaletteSelection(); });
+        el.addEventListener('click', () => runPaletteItem(_paletteItems[+el.dataset.i]));
+    });
+    paintPaletteSelection();
+}
+
+function showShortcuts() {
+    const rows = [
+        ['Ctrl/⌘ K', 'Open command palette'], ['/', 'Search'], ['?', 'This help'],
+        ['g d', 'Dashboard'], ['g h', 'Hosts'], ['g a', 'Targets'], ['g t', 'Scan tasks'], ['g r', 'Scan runs'], ['g p', 'Reports'], ['g s', 'Settings'],
+        ['n', 'New scan task'], ['d', 'Toggle compact density'], ['esc', 'Close dialog or panel'],
+    ];
+    let modal = document.getElementById('shortcutsModal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'shortcutsModal'; modal.className = 'modal hidden'; modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true');
+    modal.innerHTML = `<div class="modal-panel max-w-md"><div class="modal-header"><h2 class="card-title">Keyboard shortcuts</h2><button type="button" class="btn-icon" data-modal-close aria-label="Close"><i class="fas fa-times"></i></button></div>
+        <div class="modal-body"><div class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">${rows.map(([k, d]) => `<div class="flex gap-1 justify-end">${k.split(' ').map(x => `<kbd>${x}</kbd>`).join('')}</div><div class="text-gray-300">${d}</div>`).join('')}</div>
+        <p class="text-xs text-gray-500 pt-2">Shortcuts are ignored while typing in a field.</p></div></div>`;
+    document.body.appendChild(modal);
+    openModal(modal);
+}
+
+(function keyboard() {
+    let pendingG = false, gTimer = null;
+    const typing = e => { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable); };
+    document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); _palette && !_palette.classList.contains('hidden') ? closePalette() : openPalette(); return; }
+        if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (_modalStack.length) return;
+        if (pendingG) {
+            pendingG = false; clearTimeout(gTimer);
+            const map = { d: '/', h: '/hosts', a: '/targets', t: '/tasks', r: '/runs', p: '/reports', s: '/settings' };
+            if (map[e.key]) { e.preventDefault(); window.location.href = map[e.key]; }
+            return;
+        }
+        switch (e.key) {
+            case '/': e.preventDefault(); openPalette(); break;
+            case '?': e.preventDefault(); showShortcuts(); break;
+            case 'g': pendingG = true; gTimer = setTimeout(() => pendingG = false, 1200); break;
+            case 'n': e.preventDefault(); window.location.href = '/tasks/create'; break;
+            case 'd': e.preventDefault(); toggleDensity(); break;
+        }
+    });
+})();
+
+document.addEventListener('DOMContentLoaded', () => {
+    const b = document.getElementById('densityToggle');
+    if (b) b.setAttribute('aria-pressed', String(document.documentElement.classList.contains('density-compact')));
+});

@@ -8,15 +8,15 @@ import (
 
 type User struct {
 	gorm.Model
-	Username     string         `gorm:"uniqueIndex;not null;size:64"`
-	Email        string         `gorm:"uniqueIndex;not null;size:120"`
-	PasswordHash string         `gorm:"not null;size:128"`
-	Role         string         `gorm:"not null;size:20;default:'user'"`
-	Active       bool           `gorm:"default:true"`
-	Timezone     string         `gorm:"not null;size:50;default:'UTC'"`
+	Username     string `gorm:"uniqueIndex;not null;size:64"`
+	Email        string `gorm:"uniqueIndex;not null;size:120"`
+	PasswordHash string `gorm:"not null;size:128"`
+	Role         string `gorm:"not null;size:20;default:'user'"`
+	Active       bool   `gorm:"default:true"`
+	Timezone     string `gorm:"not null;size:50;default:'UTC'"`
 	LastLogin    *time.Time
-	TargetGroups []TargetGroup  `gorm:"foreignKey:UserID"`
-	ScanTasks    []ScanTask     `gorm:"foreignKey:UserID"`
+	TargetGroups []TargetGroup `gorm:"foreignKey:UserID"`
+	ScanTasks    []ScanTask    `gorm:"foreignKey:UserID"`
 }
 
 func (u *User) IsSuperAdmin() bool {
@@ -29,10 +29,10 @@ func (u *User) IsAdmin() bool {
 
 type TargetGroup struct {
 	gorm.Model
-	Name        string    `gorm:"not null;size:64"`
-	Description string    `gorm:"size:255"`
-	UserID      uint      `gorm:"not null"`
-	Targets     []Target  `gorm:"foreignKey:TargetGroupID;constraint:OnDelete:CASCADE;"`
+	Name        string     `gorm:"not null;size:64"`
+	Description string     `gorm:"size:255"`
+	UserID      uint       `gorm:"not null"`
+	Targets     []Target   `gorm:"foreignKey:TargetGroupID;constraint:OnDelete:CASCADE;"`
 	ScanTasks   []ScanTask `gorm:"many2many:task_target_groups;"`
 }
 
@@ -45,37 +45,37 @@ type Target struct {
 
 type ScanTask struct {
 	gorm.Model
-	Name                string         `gorm:"not null;size:64"`
-	Description         string         `gorm:"type:text"`
-	ScanProfile         string         `gorm:"size:64"`
-	CustomArgs          string         `gorm:"type:text"`
-	UserID              uint           `gorm:"not null"`
-	IsScheduled         bool           `gorm:"default:false"`
-	ScheduleType        string         `gorm:"size:20"`
-	ScheduleData        string         `gorm:"type:text"` // JSON
-	ScheduleLastRun     *time.Time     `json:"schedule_last_run"`
-	UseGlobalMaxReports bool           `gorm:"default:true"`
+	Name                string     `gorm:"not null;size:64"`
+	Description         string     `gorm:"type:text"`
+	ScanProfile         string     `gorm:"size:64"`
+	CustomArgs          string     `gorm:"type:text"`
+	UserID              uint       `gorm:"not null"`
+	IsScheduled         bool       `gorm:"default:false"`
+	ScheduleType        string     `gorm:"size:20"`
+	ScheduleData        string     `gorm:"type:text"` // JSON
+	ScheduleLastRun     *time.Time `json:"schedule_last_run"`
+	UseGlobalMaxReports bool       `gorm:"default:true"`
 	MaxReports          *int
-	TargetGroups        []TargetGroup  `gorm:"many2many:task_target_groups;"`
-	ScanRuns            []ScanRun      `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE;"`
+	TargetGroups        []TargetGroup `gorm:"many2many:task_target_groups;"`
+	ScanRuns            []ScanRun     `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE;"`
 }
 
 type ScanRun struct {
 	gorm.Model
-	TaskID       uint         `gorm:"not null"`
+	TaskID       uint `gorm:"not null"`
 	Task         ScanTask
-	Status       string       `gorm:"not null;size:20;default:'queued'"`
-	Progress     int          `gorm:"default:0"`
+	Status       string `gorm:"not null;size:20;default:'queued'"`
+	Progress     int    `gorm:"default:0"`
 	StartedAt    *time.Time
 	CompletedAt  *time.Time
-	ErrorMessage string       `gorm:"type:text"`
+	ErrorMessage string `gorm:"type:text"`
 	NmapPID      *int
-	Report       *ScanReport  `gorm:"constraint:OnDelete:CASCADE;"`
+	Report       *ScanReport `gorm:"constraint:OnDelete:CASCADE;"`
 }
 
 type ScanReport struct {
 	gorm.Model
-	ScanRunID        uint          `gorm:"not null;uniqueIndex"`
+	ScanRunID        uint `gorm:"not null;uniqueIndex"`
 	ScanRun          *ScanRun
 	Summary          string        `gorm:"type:text"`
 	XMLReportPath    string        `gorm:"size:255"`
@@ -101,6 +101,8 @@ type PortFinding struct {
 	State      string `gorm:"not null;size:20"`
 	Service    string `gorm:"size:64"`
 	Version    string `gorm:"size:255"`
+	// Notable is computed at read time (see services.NotableFor); never stored.
+	Notable interface{} `gorm:"-" json:"Notable,omitempty"`
 }
 
 type SystemSettings struct {

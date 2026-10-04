@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/csv"
 	"fmt"
 	"html/template"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"gorm.io/gorm"
 	"nmapwebui/internal/db"
 	"nmapwebui/internal/models"
+	"nmapwebui/internal/services"
 )
 
 // ReportListItem is the list representation of a report. Counts are computed
@@ -183,34 +186,28 @@ func sortedPorts(m map[string]DiffPort) []DiffPort {
 	return out
 }
 
-// GetReportDiff compares a report with the previous report produced by the
-// same task and returns hosts that appeared or disappeared, hosts whose
-// up/down status changed, and per-host ports that opened, closed or changed
-// service/version.
-func GetReportDiff(c *gin.Context) {
-	id := c.Param("id")
-	user, _ := c.Get("user")
-	u := user.(models.User)
-
-	var current models.ScanReport
-	if err := db.DB.Preload("Hosts.Ports").Preload("ScanRun").
-		Joins("JOIN scan_runs ON scan_runs.id = scan_reports.scan_run_id").
-		Joins("JOIN scan_tasks ON scan_tasks.id = scan_runs.task_id").
-		Where("scan_reports.id = ? AND scan_tasks.user_id = ?", id, u.ID).First(&current).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"detail": "Report not found"})
-		return
+// previousReport finds the newest report produced by the same task before
+// the given one.
+func previousReport(current models.ScanReport) *models.ScanReport {
+	if current.ScanRun == nil {
+		return nil
 	}
-
-	diff := ReportDiff{ReportID: current.ID, NewHosts: []DiffHost{}, RemovedHosts: []DiffHost{}, ChangedHosts: []DiffHost{}}
-
 	var previous models.ScanReport
 	err := db.DB.Preload("Hosts.Ports").
 		Joins("JOIN scan_runs ON scan_runs.id = scan_reports.scan_run_id").
 		Where("scan_runs.task_id = ? AND scan_reports.id < ?", current.ScanRun.TaskID, current.ID).
 		Order("scan_reports.id DESC").First(&previous).Error
 	if err != nil {
-		c.JSON(http.StatusOK, diff)
-		return
+		return nil
+	}
+	return &previous
+}
+
+// computeDiff compares two reports host by host. previous may be nil.
+func computeDiff(current models.ScanReport, previous *models.ScanReport) ReportDiff {
+	diff := ReportDiff{ReportID: current.ID, NewHosts: []DiffHost{}, RemovedHosts: []DiffHost{}, ChangedHosts: []DiffHost{}}
+	if previous == nil {
+		return diff
 	}
 	diff.HasPrevious = true
 	diff.PreviousReportID = previous.ID
@@ -276,7 +273,28 @@ func GetReportDiff(c *gin.Context) {
 		diff.Summary.ClosedPorts += len(ports)
 	}
 	sort.Slice(diff.RemovedHosts, func(i, j int) bool { return diff.RemovedHosts[i].IPAddress < diff.RemovedHosts[j].IPAddress })
+	return diff
+}
 
+// GetReportDiff compares a report with the previous report produced by the
+// same task and returns hosts that appeared or disappeared, hosts whose
+// up/down status changed, and per-host ports that opened, closed or changed
+// service/version.
+func GetReportDiff(c *gin.Context) {
+	id := c.Param("id")
+	user, _ := c.Get("user")
+	u := user.(models.User)
+
+	var current models.ScanReport
+	if err := db.DB.Preload("Hosts.Ports").Preload("ScanRun").
+		Joins("JOIN scan_runs ON scan_runs.id = scan_reports.scan_run_id").
+		Joins("JOIN scan_tasks ON scan_tasks.id = scan_runs.task_id").
+		Where("scan_reports.id = ? AND scan_tasks.user_id = ?", id, u.ID).First(&current).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Report not found"})
+		return
+	}
+
+	diff := computeDiff(current, previousReport(current))
 	c.JSON(http.StatusOK, diff)
 }
 
@@ -292,6 +310,16 @@ func GetReport(c *gin.Context) {
 		Where("scan_reports.id = ? AND scan_tasks.user_id = ?", id, u.ID).First(&report).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Report not found"})
 		return
+	}
+	for hi := range report.Hosts {
+		for pi := range report.Hosts[hi].Ports {
+			p := &report.Hosts[hi].Ports[pi]
+			if p.State == "open" {
+				if n, ok := services.NotableFor(p.PortNumber, p.Protocol, p.Service); ok {
+					p.Notable = n
+				}
+			}
+		}
 	}
 	c.JSON(http.StatusOK, report)
 }
@@ -322,6 +350,28 @@ func DownloadReport(c *gin.Context) {
 			c.FileAttachment(report.NormalReportPath, "report_"+id+".txt")
 			return
 		}
+	case "csv":
+		c.Header("Content-Type", "text/csv; charset=utf-8")
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"report_%s.csv\"", id))
+		w := csv.NewWriter(c.Writer)
+		w.Write([]string{"report_id", "ip_address", "hostname", "host_status", "os", "port", "protocol", "state", "service", "version", "notable", "severity"})
+		for _, h := range report.Hosts {
+			if len(h.Ports) == 0 {
+				w.Write([]string{id, h.IPAddress, h.Hostname, h.Status, h.OSInfo, "", "", "", "", "", "", ""})
+				continue
+			}
+			for _, p := range h.Ports {
+				label, sev := "", ""
+				if p.State == "open" {
+					if n, ok := services.NotableFor(p.PortNumber, p.Protocol, p.Service); ok {
+						label, sev = n.Label, n.Severity
+					}
+				}
+				w.Write([]string{id, h.IPAddress, h.Hostname, h.Status, h.OSInfo, strconv.Itoa(p.PortNumber), p.Protocol, p.State, p.Service, p.Version, label, sev})
+			}
+		}
+		w.Flush()
+		return
 	case "html":
 		html, err := renderHTMLReport(report)
 		if err != nil {

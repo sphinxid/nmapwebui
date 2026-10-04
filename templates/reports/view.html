@@ -14,6 +14,7 @@
     <div class="flex flex-wrap items-center gap-2">
         <a id="xmlLink" href="#" class="btn-secondary btn-sm"><i class="fas fa-code"></i>XML</a>
         <a id="txtLink" href="#" class="btn-secondary btn-sm"><i class="fas fa-file-lines"></i>Text</a>
+        <a id="csvLink" href="#" class="btn-secondary btn-sm" title="All findings as CSV"><i class="fas fa-table"></i>CSV</a>
         <a id="pdfLink" href="#" class="btn-secondary btn-sm"><i class="fas fa-file-pdf text-red-400"></i>PDF</a>
     </div>
 </div>
@@ -53,6 +54,8 @@ const reportId = window.location.pathname.split('/').pop();
 document.getElementById('xmlLink').href = `/api/reports/${reportId}/download/xml`;
 document.getElementById('txtLink').href = `/api/reports/${reportId}/download/txt`;
 document.getElementById('pdfLink').href = `/api/reports/${reportId}/download/pdf`;
+document.getElementById('csvLink').href = `/api/reports/${reportId}/download/csv`;
+let portSort = { key: 'port', dir: 'asc' };
 
 let report = null, diff = null;
 // Lookup tables built from the diff so host cards can mark rows.
@@ -143,7 +146,8 @@ function renderHosts() {
         const up = h.Status === 'up';
         let ports = h.Ports || [];
         if (onlyOpen) ports = ports.filter(p => p.State === 'open');
-        ports = ports.slice().sort((a, b) => a.PortNumber - b.PortNumber);
+        const acc = { port: p => p.PortNumber, state: p => p.State, service: p => p.Service || '', version: p => p.Version || '' };
+        ports = sortRows(ports, acc[portSort.key] || acc.port, portSort.dir);
         const openCount = (h.Ports || []).filter(p => p.State === 'open').length;
         const opened = openedByHost[h.IPAddress] || new Set();
         const changed = changedByHost[h.IPAddress] || {};
@@ -156,8 +160,10 @@ function renderHosts() {
                     <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${up ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}"><i class="fas ${up ? 'fa-server' : 'fa-power-off'}"></i></div>
                     <div class="min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
-                            <span class="font-mono font-semibold text-white">${escapeHtml(h.IPAddress)}</span>
+                            <span class="font-mono font-semibold text-white">${escapeHtml(h.IPAddress)}</span>${copyButton(h.IPAddress, 'IP')}
+                            <a href="/hosts?ip=${encodeURIComponent(h.IPAddress)}" class="text-xs text-gray-500 hover:text-primary-400" title="Host history"><i class="fas fa-clock-rotate-left"></i></a>
                             ${isNew ? '<span class="badge-green">new host</span>' : ''}
+                            ${(h.Ports || []).some(p => p.Notable && p.Notable.severity === 'high') ? '<span class="badge-red"><i class="fas fa-triangle-exclamation text-[10px]"></i>high exposure</span>' : (h.Ports || []).some(p => p.Notable) ? '<span class="badge-amber"><i class="fas fa-circle-exclamation text-[10px]"></i>notable</span>' : ''}
                         </div>
                         ${h.Hostname ? `<div class="text-xs text-gray-400 truncate">${escapeHtml(h.Hostname)}</div>` : ''}
                     </div>
@@ -169,7 +175,7 @@ function renderHosts() {
                 </div>
             </div>
             ${ports.length ? `<div class="table-wrap"><table class="table">
-                <thead><tr><th class="w-32">Port</th><th class="w-28">State</th><th>Service</th><th>Version</th></tr></thead>
+                <thead><tr><th class="w-36" data-sort="port">Port</th><th class="w-28" data-sort="state">State</th><th data-sort="service">Service</th><th data-sort="version">Version</th><th class="w-44">Exposure</th></tr></thead>
                 <tbody>${ports.map(p => {
                     const k = `${p.PortNumber}/${p.Protocol}`;
                     const isOpened = opened.has(k) && !isNew;
@@ -179,14 +185,16 @@ function renderHosts() {
                         <td><span class="${stateCls[p.State] || 'badge-gray'}">${escapeHtml(p.State)}</span></td>
                         <td class="text-gray-200">${escapeHtml(p.Service || '-')}${ch ? ` <span class="text-amber-400 text-xs" title="was ${escapeHtml(ch.before.service || '?')}">(was ${escapeHtml(ch.before.service || '?')})</span>` : ''}</td>
                         <td class="text-gray-400 text-xs">${escapeHtml(p.Version || '-')}${ch && ch.before.version !== ch.after.version ? ` <span class="text-amber-400" title="was ${escapeHtml(ch.before.version || '-')}">(was ${escapeHtml(ch.before.version || '-')})</span>` : ''}</td>
+                        <td>${p.Notable ? notableBadge(p.Notable) : '<span class="text-gray-700">–</span>'}</td>
                     </tr>`;
                 }).join('')}
-                ${closed.map(p => `<tr class="diff-removed opacity-70"><td class="font-mono text-gray-400 line-through">${p.port}<span class="text-gray-600">/${escapeHtml(p.protocol)}</span> <span class="badge-red ml-1 no-underline">closed</span></td><td><span class="badge-gray">was open</span></td><td class="text-gray-500 line-through">${escapeHtml(p.service || '-')}</td><td class="text-gray-600 text-xs line-through">${escapeHtml(p.version || '-')}</td></tr>`).join('')}
+                ${closed.map(p => `<tr class="diff-removed opacity-70"><td class="font-mono text-gray-400 line-through">${p.port}<span class="text-gray-600">/${escapeHtml(p.protocol)}</span> <span class="badge-red ml-1 no-underline">closed</span></td><td><span class="badge-gray">was open</span></td><td class="text-gray-500 line-through">${escapeHtml(p.service || '-')}</td><td class="text-gray-600 text-xs line-through">${escapeHtml(p.version || '-')}</td><td></td></tr>`).join('')}
                 </tbody></table></div>`
             : `<div class="px-5 py-4 text-sm text-gray-500">${onlyOpen && (h.Ports || []).length ? 'No open ports. Untick "Only open ports" to see filtered and closed ports.' : 'No port information for this host.'}</div>
                ${closed.length ? `<div class="px-5 pb-4 text-sm text-gray-400">Previously open: ${closed.map(fmtPort).join(', ')}</div>` : ''}`}
         </div>`;
     }).join('');
+    container.querySelectorAll('table').forEach(t => initSortable(t, (key, dir) => { portSort = { key, dir }; renderHosts(); }, portSort));
 }
 
 ['hostSearch', 'onlyUp', 'onlyOpen'].forEach(id => document.getElementById(id).addEventListener('input', () => report && renderHosts()));

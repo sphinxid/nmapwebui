@@ -108,6 +108,11 @@ func main() {
 			authorized.GET("/reports/:id/download/:format", handlers.DownloadReport)
 
 			authorized.GET("/dashboard/stats", handlers.GetDashboardStats)
+			authorized.GET("/search", handlers.Search)
+			authorized.GET("/hosts", handlers.ListHosts)
+			authorized.GET("/hosts/:ip", handlers.GetHost)
+			authorized.GET("/me", handlers.GetMe)
+			authorized.PUT("/me", handlers.UpdateMe)
 
 			authorized.GET("/sse/scans/:run_id/events", handlers.ScanEvents)
 
@@ -133,6 +138,8 @@ func main() {
 	router.GET("/runs", handlers.ScanRunsPage)
 	router.GET("/reports", handlers.ReportsPage)
 	router.GET("/reports/:id", handlers.ReportViewPage)
+	router.GET("/hosts", handlers.HostsPage)
+	router.GET("/settings", handlers.SettingsPage)
 	router.GET("/admin/users", handlers.AdminUsersPage)
 
 	port := os.Getenv("PORT")

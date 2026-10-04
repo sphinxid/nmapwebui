@@ -144,6 +144,15 @@ Connect to `/api/sse/scans/:run_id/events` for real-time progress:
 ### Report Diff
 `GET /api/reports/:id/diff` compares a report with the previous report of the same task: hosts that appeared or disappeared, up/down status changes, and per-host ports that opened, closed or changed service/version. The report page renders this as a "Changes since previous scan" panel and marks new and closed ports inline.
 
+### Host Inventory and Exposure
+`GET /api/hosts` aggregates the latest report of every task into one row per IP address: status, open ports, services, which tasks cover it, first and last seen. `GET /api/hosts/:ip` adds the port history across all reports. Open ports are tagged by a heuristic in `internal/services/exposure.go` ("high" for remote-admin, database, file-sharing and ICS services such as Telnet, RDP, SMB, Redis or Modbus; "medium" for services worth an inventory check such as SSH or alternate HTTP). It is a prioritisation aid, not a vulnerability rating.
+
+### Command Palette and Shortcuts
+`Ctrl/⌘ K` or `/` opens a palette that searches hosts, tasks, target groups, reports and runs (`GET /api/search?q=`) and lists navigation commands. `g` followed by `d/h/a/t/r/p/s` jumps to a section, `n` creates a task, `d` toggles compact table density and `?` lists everything.
+
+### Account Settings
+`/settings` lets each user change their email, the timezone used to evaluate schedules, and their password (`GET/PUT /api/me`). Last login is recorded on sign-in.
+
 ### Health
 `GET /api/health` reports Redis reachability, the number of worker processes with a live heartbeat, and the queue depth. The UI header indicator polls it so a missing worker is visible immediately.
 
@@ -166,7 +175,10 @@ Nmap outputs saved as:
 | `/api/targets` | CRUD for target groups & hosts (`PUT /api/targets/:id` replaces the target list) |
 | `/api/scans` | Scan tasks & runs. Lists support `q`, `scheduled`, `status`, `task_id` filters; `POST .../runs/:id/cancel` stops a run |
 | `/api/schedules` | Enable/disable scheduled scanning |
-| `/api/reports` | List (filter by `task_id`, `from`, `to`, `q`), view, diff, download XML/TXT/PDF |
+| `/api/reports` | List (filter by `task_id`, `from`, `to`, `q`), view, diff, download XML/TXT/CSV/PDF |
+| `/api/hosts` | Host inventory from the latest report per task; `/api/hosts/:ip` for detail and history |
+| `/api/search` | Global search for the command palette |
+| `/api/me` | Own profile: email, timezone, password |
 | `/api/health` | Redis, worker heartbeat and queue depth |
 | `/api/admin` | Admin stats & user listing |
 | `/api/sse` | Server-Sent Events for live scan progress |

@@ -30,29 +30,26 @@
             <button type="button" class="btn-icon ml-auto lg:hidden" aria-label="Close menu" onclick="toggleSidebar(false)"><i class="fas fa-times"></i></button>
         </div>
 
-        <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
-            <a href="/" class="sidebar-link {{if eq .ActivePage "dashboard"}}active{{end}}" {{if eq .ActivePage "dashboard"}}aria-current="page"{{end}}>
-                <i class="fas fa-gauge-high w-5 text-center"></i><span>Dashboard</span>
-            </a>
-            <a href="/targets" class="sidebar-link {{if eq .ActivePage "targets"}}active{{end}}" {{if eq .ActivePage "targets"}}aria-current="page"{{end}}>
-                <i class="fas fa-bullseye w-5 text-center"></i><span>Targets</span>
-            </a>
-            <a href="/tasks" class="sidebar-link {{if or (eq .ActivePage "tasks") (eq .ActivePage "tasks-create") (eq .ActivePage "tasks-view") (eq .ActivePage "tasks-run")}}active{{end}}" {{if eq .ActivePage "tasks"}}aria-current="page"{{end}}>
-                <i class="fas fa-crosshairs w-5 text-center"></i><span>Scan Tasks</span>
-            </a>
-            <a href="/runs" class="sidebar-link {{if eq .ActivePage "runs"}}active{{end}}" {{if eq .ActivePage "runs"}}aria-current="page"{{end}}>
-                <i class="fas fa-play-circle w-5 text-center"></i><span>Scan Runs</span>
-            </a>
-            <a href="/reports" class="sidebar-link {{if or (eq .ActivePage "reports") (eq .ActivePage "reports-view")}}active{{end}}" {{if eq .ActivePage "reports"}}aria-current="page"{{end}}>
-                <i class="fas fa-file-lines w-5 text-center"></i><span>Reports</span>
-            </a>
+        <nav class="flex-1 p-3 overflow-y-auto">
+            {{/* Section labels group the product the way analysts think: what is out there, how we scan it, what we found. */}}
+            <div class="nav-section">Overview</div>
+            <a href="/" class="sidebar-link {{if eq .ActivePage "dashboard"}}active{{end}}" {{if eq .ActivePage "dashboard"}}aria-current="page"{{end}}><i class="fas fa-gauge-high w-5 text-center"></i><span>Dashboard</span><kbd class="ml-auto opacity-60">g d</kbd></a>
+
+            <div class="nav-section">Assets</div>
+            <a href="/hosts" class="sidebar-link {{if eq .ActivePage "hosts"}}active{{end}}" {{if eq .ActivePage "hosts"}}aria-current="page"{{end}}><i class="fas fa-server w-5 text-center"></i><span>Hosts</span><kbd class="ml-auto opacity-60">g h</kbd></a>
+            <a href="/targets" class="sidebar-link {{if eq .ActivePage "targets"}}active{{end}}" {{if eq .ActivePage "targets"}}aria-current="page"{{end}}><i class="fas fa-bullseye w-5 text-center"></i><span>Target Groups</span><kbd class="ml-auto opacity-60">g a</kbd></a>
+
+            <div class="nav-section">Scanning</div>
+            <a href="/tasks" class="sidebar-link {{if or (eq .ActivePage "tasks") (eq .ActivePage "tasks-create") (eq .ActivePage "tasks-view") (eq .ActivePage "tasks-run")}}active{{end}}" {{if eq .ActivePage "tasks"}}aria-current="page"{{end}}><i class="fas fa-crosshairs w-5 text-center"></i><span>Scan Tasks</span><kbd class="ml-auto opacity-60">g t</kbd></a>
+            <a href="/runs" class="sidebar-link {{if eq .ActivePage "runs"}}active{{end}}" {{if eq .ActivePage "runs"}}aria-current="page"{{end}}><i class="fas fa-play-circle w-5 text-center"></i><span>Scan Runs</span><kbd class="ml-auto opacity-60">g r</kbd></a>
+
+            <div class="nav-section">Results</div>
+            <a href="/reports" class="sidebar-link {{if or (eq .ActivePage "reports") (eq .ActivePage "reports-view")}}active{{end}}" {{if eq .ActivePage "reports"}}aria-current="page"{{end}}><i class="fas fa-file-lines w-5 text-center"></i><span>Reports</span><kbd class="ml-auto opacity-60">g p</kbd></a>
+
+            <div class="nav-section">Account</div>
+            <a href="/settings" class="sidebar-link {{if eq .ActivePage "settings"}}active{{end}}" {{if eq .ActivePage "settings"}}aria-current="page"{{end}}><i class="fas fa-gear w-5 text-center"></i><span>Settings</span><kbd class="ml-auto opacity-60">g s</kbd></a>
             {{if .User}}{{if .User.IsAdmin}}
-            <div class="pt-4 mt-4 border-t border-gray-800">
-                <div class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Administration</div>
-                <a href="/admin/users" class="sidebar-link {{if eq .ActivePage "admin-users"}}active{{end}}" {{if eq .ActivePage "admin-users"}}aria-current="page"{{end}}>
-                    <i class="fas fa-users-gear w-5 text-center"></i><span>Users</span>
-                </a>
-            </div>
+            <a href="/admin/users" class="sidebar-link {{if eq .ActivePage "admin-users"}}active{{end}}" {{if eq .ActivePage "admin-users"}}aria-current="page"{{end}}><i class="fas fa-users-gear w-5 text-center"></i><span>Users</span></a>
             {{end}}{{end}}
         </nav>
 
@@ -75,10 +72,16 @@
         <header class="sticky top-0 z-20 h-16 bg-gray-950/80 backdrop-blur border-b border-gray-800 px-4 sm:px-6 flex items-center gap-4">
             <button type="button" id="sidebarToggle" class="btn-icon lg:hidden -ml-2" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false"><i class="fas fa-bars"></i></button>
             <h2 class="text-base sm:text-lg font-semibold text-white truncate">{{if .Title}}{{.Title}}{{else}}Dashboard{{end}}</h2>
-            <div class="ml-auto flex items-center gap-4">
-                <div id="healthIndicator" class="flex items-center gap-2 text-xs text-gray-400" title="">
+            <div class="ml-auto flex items-center gap-2 sm:gap-3">
+                <button type="button" class="search-trigger" onclick="openPalette()" aria-label="Search or run a command">
+                    <i class="fas fa-search text-xs"></i><span class="flex-1 text-left truncate">Search hosts, tasks, reports…</span><kbd>Ctrl</kbd><kbd>K</kbd>
+                </button>
+                <button type="button" class="btn-icon md:hidden" onclick="openPalette()" aria-label="Search"><i class="fas fa-search"></i></button>
+                <button type="button" id="densityToggle" class="btn-icon hidden sm:inline-flex" onclick="toggleDensity()" title="Toggle compact density (d)" aria-label="Toggle compact density" aria-pressed="false"><i class="fas fa-table-cells"></i></button>
+                <button type="button" class="btn-icon hidden sm:inline-flex" onclick="showShortcuts()" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><i class="fas fa-keyboard"></i></button>
+                <div id="healthIndicator" class="flex items-center gap-2 text-xs text-gray-400 pl-2 sm:border-l sm:border-gray-800" title="">
                     <span data-dot class="w-2 h-2 rounded-full bg-gray-600"></span>
-                    <span data-label class="hidden sm:inline">Checking…</span>
+                    <span data-label class="hidden lg:inline">Checking…</span>
                 </div>
                 {{if not .User}}
                 <a href="/login" class="btn-primary btn-sm"><i class="fas fa-right-to-bracket"></i>Sign in</a>

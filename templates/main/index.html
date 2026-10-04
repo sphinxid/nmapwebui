@@ -15,35 +15,29 @@
 </div>
 
 <!-- Metrics -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-    <a href="/tasks" class="card p-5 hover:border-gray-700 transition">
-        <div class="flex items-center justify-between">
-            <span class="text-sm text-gray-400">Scan tasks</span>
-            <i class="fas fa-crosshairs text-primary-400"></i>
-        </div>
-        <div class="text-3xl font-bold text-white mt-2 tabular-nums" id="totalTasks">–</div>
-    </a>
-    <a href="/runs?status=running" class="card p-5 hover:border-gray-700 transition">
-        <div class="flex items-center justify-between">
-            <span class="text-sm text-gray-400">Active scans</span>
-            <i class="fas fa-bolt text-amber-400"></i>
-        </div>
-        <div class="text-3xl font-bold text-white mt-2 tabular-nums" id="runningScans">–</div>
-    </a>
-    <a href="/reports" class="card p-5 hover:border-gray-700 transition">
-        <div class="flex items-center justify-between">
-            <span class="text-sm text-gray-400">Reports</span>
-            <i class="fas fa-file-lines text-blue-400"></i>
-        </div>
-        <div class="text-3xl font-bold text-white mt-2 tabular-nums" id="totalReports">–</div>
-    </a>
-    <a href="/runs?status=failed" class="card p-5 hover:border-gray-700 transition">
-        <div class="flex items-center justify-between">
-            <span class="text-sm text-gray-400">Failed runs</span>
-            <i class="fas fa-triangle-exclamation text-red-400"></i>
-        </div>
-        <div class="text-3xl font-bold text-white mt-2 tabular-nums" id="failedRuns">–</div>
-    </a>
+<div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
+    <a href="/hosts" class="stat hover:border-gray-700 transition"><div class="stat-label">Hosts <i class="fas fa-server text-gray-500"></i></div><div class="stat-value" id="invHosts">–</div><div class="stat-sub" id="invUp">latest scan per task</div></a>
+    <a href="/hosts?sort=open_ports&dir=desc" class="stat hover:border-gray-700 transition"><div class="stat-label">Open ports <i class="fas fa-plug text-gray-500"></i></div><div class="stat-value" id="invPorts">–</div><div class="stat-sub">across all hosts</div></a>
+    <a href="/hosts?notable=high" class="stat hover:border-gray-700 transition"><div class="stat-label">High exposure <i class="fas fa-triangle-exclamation text-red-400"></i></div><div class="stat-value text-red-300" id="invHigh">–</div><div class="stat-sub">hosts with admin/db ports</div></a>
+    <a href="/runs?status=running" class="stat hover:border-gray-700 transition"><div class="stat-label">Active scans <i class="fas fa-bolt text-amber-400"></i></div><div class="stat-value" id="runningScans">–</div><div class="stat-sub" id="queuedScans">&nbsp;</div></a>
+    <a href="/tasks" class="stat hover:border-gray-700 transition"><div class="stat-label">Scan tasks <i class="fas fa-crosshairs text-primary-400"></i></div><div class="stat-value" id="totalTasks">–</div><div class="stat-sub" id="scheduledTasks">&nbsp;</div></a>
+    <a href="/reports" class="stat hover:border-gray-700 transition"><div class="stat-label">Reports <i class="fas fa-file-lines text-blue-400"></i></div><div class="stat-value" id="totalReports">–</div><div class="stat-sub" id="failedRuns">&nbsp;</div></a>
+</div>
+
+<!-- Exposure row -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+    <div class="card">
+        <div class="card-header"><h3 class="card-title">Top exposed services</h3><a href="/hosts" class="text-xs text-gray-500 hover:text-white">hosts per service</a></div>
+        <div class="card-body"><div class="h-56"><canvas id="servicesChart" role="img" aria-label="Hosts per service"></canvas></div><p id="servicesEmpty" class="empty hidden"><i class="fas fa-plug"></i>No open ports in the current estate.</p></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h3 class="card-title">Most exposed hosts</h3><a href="/hosts?sort=severity&dir=desc" class="text-xs text-primary-400 hover:text-primary-300">View all <i class="fas fa-arrow-right ml-1 text-[10px]"></i></a></div>
+        <ul id="exposedHosts" class="divide-y divide-gray-800"></ul>
+    </div>
+    <div class="card">
+        <div class="card-header"><h3 class="card-title">Recent changes</h3><span class="text-xs text-gray-500">vs previous scan</span></div>
+        <ul id="recentChanges" class="divide-y divide-gray-800"></ul>
+    </div>
 </div>
 
 <!-- Charts -->
@@ -110,10 +104,21 @@ async function loadDashboard() {
     const r = await api(`/api/dashboard/stats?period=${currentPeriod}`);
     if (!r.ok) { toast.error(errorDetail(r, 'Could not load dashboard data')); return; }
     const s = r.data;
-    document.getElementById('totalTasks').textContent = s.total_tasks || 0;
-    document.getElementById('runningScans').textContent = s.running_scans || 0;
-    document.getElementById('totalReports').textContent = s.total_reports || 0;
-    document.getElementById('failedRuns').textContent = (s.status_counts && s.status_counts.failed) || 0;
+    const inv = s.inventory || {};
+    document.getElementById('invHosts').textContent = fmtNum(inv.hosts);
+    document.getElementById('invUp').textContent = inv.hosts ? `${fmtNum(inv.hosts_up)} up · ${fmtNum(inv.hosts - inv.hosts_up)} down` : 'latest scan per task';
+    document.getElementById('invPorts').textContent = fmtNum(inv.open_ports);
+    document.getElementById('invHigh').textContent = fmtNum(inv.high);
+    document.getElementById('totalTasks').textContent = fmtNum(s.total_tasks);
+    document.getElementById('runningScans').textContent = fmtNum(s.running_scans);
+    const queued = (s.status_counts && s.status_counts.queued) || 0;
+    document.getElementById('queuedScans').textContent = queued ? `${queued} queued` : 'none queued';
+    document.getElementById('totalReports').textContent = fmtNum(s.total_reports);
+    const failed = (s.status_counts && s.status_counts.failed) || 0;
+    document.getElementById('failedRuns').innerHTML = failed ? `<a href="/runs?status=failed" class="text-red-300 hover:underline">${failed} failed run${failed === 1 ? '' : 's'}</a>` : 'no failed runs';
+    renderServices(s.top_services || []);
+    renderExposed(s.exposed_hosts || []);
+    renderChanges(s.recent_changes || []);
     renderActive(s.active_runs || []);
     renderRecent(s.recent_runs || []);
     renderActivity(s.activity || []);
@@ -157,6 +162,56 @@ function renderRecent(runs) {
                 ? `<a href="/tasks/run/${r.ID}" class="btn-secondary btn-xs"><i class="fas fa-tower-broadcast"></i>Live</a>`
                 : `<a href="/runs?task_id=${r.TaskID}" class="text-sm text-gray-400 hover:text-white">Runs</a>`}</td>
         </tr>`).join('');
+}
+
+let servicesChart;
+function renderServices(list) {
+    const canvas = document.getElementById('servicesChart');
+    const empty = document.getElementById('servicesEmpty');
+    if (servicesChart) servicesChart.destroy();
+    if (!list.length) { canvas.classList.add('hidden'); empty.classList.remove('hidden'); return; }
+    canvas.classList.remove('hidden'); empty.classList.add('hidden');
+    servicesChart = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: { labels: list.map(x => x.service), datasets: [{ data: list.map(x => x.hosts), backgroundColor: 'rgba(16,185,129,0.55)', hoverBackgroundColor: '#10b981', borderRadius: 3, barThickness: 14 }] },
+        options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.raw} host${c.raw === 1 ? '' : 's'}` } } },
+            scales: { x: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } }, y: { grid: { display: false }, ticks: { font: { family: 'ui-monospace, monospace', size: 11 } } } },
+            onClick: (e, els) => { if (els.length) window.location.href = `/hosts?q=${encodeURIComponent(list[els[0].index].service)}`; } }
+    });
+}
+
+function renderExposed(list) {
+    const ul = document.getElementById('exposedHosts');
+    if (!list.length) { ul.innerHTML = '<li class="empty"><i class="fas fa-server"></i>No hosts with open ports yet.</li>'; return; }
+    const max = Math.max(...list.map(h => h.open_ports));
+    ul.innerHTML = list.map(h => `
+        <li><a href="/hosts?ip=${encodeURIComponent(h.ip_address)}" class="flex items-center gap-3 px-5 py-2.5 hover:bg-gray-800/40">
+            ${severityDot(h.high ? 'high' : '')}
+            <div class="min-w-0 flex-1">
+                <div class="flex items-baseline gap-2"><span class="font-mono text-sm text-white">${escapeHtml(h.ip_address)}</span>${h.hostname ? `<span class="text-xs text-gray-500 truncate">${escapeHtml(h.hostname)}</span>` : ''}</div>
+                <div class="progress h-1 mt-1.5"><div class="progress-fill ${h.high ? 'is-failed' : ''}" style="width:${Math.round(h.open_ports / max * 100)}%"></div></div>
+            </div>
+            <div class="text-right"><div class="text-sm text-white tabular-nums">${h.open_ports}</div><div class="text-[10px] uppercase tracking-wide text-gray-500">${h.high ? `${h.high} high` : 'ports'}</div></div>
+        </a></li>`).join('');
+}
+
+function renderChanges(list) {
+    const ul = document.getElementById('recentChanges');
+    if (!list.length) { ul.innerHTML = '<li class="empty"><i class="fas fa-code-compare"></i>Changes appear once a task has run at least twice.</li>'; return; }
+    ul.innerHTML = list.map(c => {
+        const s = c.summary || {};
+        const parts = [];
+        if (s.opened_ports) parts.push(`<span class="badge-green">+${s.opened_ports} port${s.opened_ports === 1 ? '' : 's'}</span>`);
+        if (s.closed_ports) parts.push(`<span class="badge-red">−${s.closed_ports} port${s.closed_ports === 1 ? '' : 's'}</span>`);
+        if (s.new_hosts) parts.push(`<span class="badge-green">+${s.new_hosts} host${s.new_hosts === 1 ? '' : 's'}</span>`);
+        if (s.removed_hosts) parts.push(`<span class="badge-red">−${s.removed_hosts} host${s.removed_hosts === 1 ? '' : 's'}</span>`);
+        if (s.changed_services) parts.push(`<span class="badge-amber">~${s.changed_services} service${s.changed_services === 1 ? '' : 's'}</span>`);
+        if (s.status_changes) parts.push(`<span class="badge-amber">${s.status_changes} status</span>`);
+        return `<li><a href="/reports/${c.report_id}" class="block px-5 py-2.5 hover:bg-gray-800/40">
+            <div class="flex items-baseline justify-between gap-2"><span class="text-sm text-white font-medium truncate">${escapeHtml(c.task_name)}</span>${timeCell(c.created_at, 'text-xs')}</div>
+            <div class="flex flex-wrap gap-1.5 mt-1.5">${parts.length ? parts.join('') : '<span class="text-xs text-gray-500"><i class="fas fa-check mr-1 text-emerald-500"></i>No changes</span>'}</div>
+        </a></li>`;
+    }).join('');
 }
 
 function renderActivity(activity) {

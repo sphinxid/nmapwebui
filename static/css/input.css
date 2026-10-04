@@ -66,8 +66,11 @@
   .progress-fill.is-cancelled { @apply bg-gray-500; }
 
   /* Sidebar */
-  .sidebar-link { @apply flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition border-l-2 border-transparent; }
+  .nav-section { @apply px-3 pt-4 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 first:pt-1; }
+  .sidebar-link { @apply flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition border-l-2 border-transparent; }
   .sidebar-link.active { @apply text-white bg-primary-500/10 border-primary-500; }
+  .sidebar-link kbd { @apply opacity-0 transition; }
+  .sidebar-link:hover kbd { @apply opacity-60; }
 
   /* Segmented control (per-page, chart period) */
   .segment { @apply inline-flex rounded-md border border-gray-700 bg-gray-900 p-0.5 text-xs; }
@@ -96,4 +99,64 @@
   /* Diff markers on report rows */
   .diff-new { @apply bg-emerald-500/10; }
   .diff-removed { @apply bg-red-500/5; }
+}
+
+@layer components {
+  /* Keyboard hints */
+  kbd { @apply inline-flex items-center justify-center min-w-[1.4rem] h-5 px-1.5 rounded border border-gray-700 bg-gray-800 text-[10px] font-mono text-gray-300 leading-none; }
+
+  /* Top-bar search trigger */
+  .search-trigger { @apply hidden md:flex items-center gap-2 w-64 lg:w-80 h-9 px-3 rounded-md border border-gray-800 bg-gray-900/70 text-sm text-gray-500 hover:border-gray-700 hover:text-gray-300 transition; }
+
+  /* Command palette */
+  .palette { @apply fixed inset-0 z-[55] bg-black/70 backdrop-blur-sm flex items-start justify-center p-4 pt-[12vh]; }
+  .palette-panel { @apply w-full max-w-xl card shadow-2xl overflow-hidden; }
+  .palette-input { @apply flex items-center gap-3 px-4 border-b border-gray-800; height: 3.25rem; }
+  .palette-input input { @apply flex-1 bg-transparent outline-none text-base text-white placeholder-gray-500; }
+  .palette-list { @apply max-h-[50vh] overflow-y-auto py-2; }
+  .palette-group { @apply px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500; }
+  .palette-item { @apply flex items-center gap-3 mx-2 px-3 py-2 rounded-md text-sm text-gray-200 cursor-pointer; }
+  .palette-item.active { @apply bg-primary-500/15 text-white; }
+  .palette-foot { @apply flex items-center gap-4 px-4 py-2 border-t border-gray-800 text-[11px] text-gray-500; }
+  .palette-foot span { @apply flex items-center gap-1; }
+
+  /* Drawer */
+  .drawer { @apply fixed inset-0 z-50; }
+  .drawer-backdrop { @apply absolute inset-0 bg-black/60 backdrop-blur-[2px] opacity-0 transition-opacity duration-200; }
+  .drawer.open .drawer-backdrop { @apply opacity-100; }
+  .drawer-panel { @apply absolute inset-y-0 right-0 w-full bg-gray-900 border-l border-gray-800 shadow-2xl flex flex-col translate-x-full transition-transform duration-200; }
+  .drawer.open .drawer-panel { @apply translate-x-0; }
+  .drawer-header { @apply flex items-start justify-between gap-4 px-5 py-4 border-b border-gray-800; }
+  .drawer-body { @apply flex-1 overflow-y-auto p-5 space-y-5; }
+
+  /* Severity + chips */
+  .sev-dot { @apply inline-block w-2 h-2 rounded-full flex-shrink-0; }
+  .chip { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-800 border border-gray-700 text-xs text-gray-300 font-mono; }
+  .copy-btn { @apply inline-flex items-center justify-center w-6 h-6 rounded text-gray-600 hover:text-gray-200 hover:bg-gray-800 transition align-middle; }
+  tr:hover .copy-btn { @apply text-gray-400; }
+
+  /* Sortable headers */
+  th[data-sort] { @apply cursor-pointer select-none hover:text-gray-200; }
+  th[data-sort] .sort-ind { @apply ml-1.5 text-[10px] text-gray-600; }
+  th[data-sort].sorted .sort-ind { @apply text-primary-400; }
+  th[data-sort]:focus-visible { @apply ring-1 ring-inset; }
+
+  /* Sticky table header inside scrolling cards */
+  .table-sticky thead th { @apply sticky top-0 z-10; }
+
+  /* Stat tiles */
+  .stat { @apply card p-4 flex flex-col gap-1 min-w-0; }
+  .stat-label { @apply text-xs text-gray-400 flex items-center justify-between gap-2; }
+  .stat-value { @apply text-2xl font-bold text-white tabular-nums leading-tight; }
+  .stat-sub { @apply text-xs text-gray-500; }
+
+  /* Compact density */
+  .density-compact .table tbody td { @apply py-1.5; }
+  .density-compact .table thead th { @apply py-2; }
+  .density-compact .card-body { @apply p-4; }
+  .density-compact .card-header { @apply px-4 py-3; }
+  .density-compact main { @apply p-4 lg:p-5; }
+  .density-compact .page-header { @apply mb-4; }
+  .density-compact .stat { @apply p-3; }
+  .density-compact .stat-value { @apply text-xl; }
 }
