@@ -11,7 +11,7 @@ A modern web-based frontend for Nmap built with **Go**, **Gin**, **GORM**, **Red
 | Scheduler | robfig/cron |
 | Database | SQLite via GORM |
 | Auth | JWT + bcrypt |
-| Frontend | Go html/template + Tailwind CSS |
+| Frontend | Go html/template + Tailwind CSS (built to a static file, no CDN) |
 | Live Updates | Server-Sent Events (SSE) via Redis pub/sub |
 | Nmap Execution | os/exec subprocess |
 
@@ -30,7 +30,13 @@ nmapwebui/
 │   ├── handlers/           # HTTP handlers (auth, targets, scans, reports, admin, SSE)
 │   ├── services/           # Business logic (nmap, locking, reports)
 │   └── scheduler/          # Cron-based schedule checker
-├── templates/              # Go html/template + Tailwind frontend
+├── templates/              # Go html/template pages (base.html holds the shared shell)
+├── static/
+│   ├── css/input.css       # Tailwind source; app.css is the committed build output
+│   ├── js/common.js        # Shared UI helpers (API wrapper, toasts, modals, pagination)
+│   └── vendor/             # Chart.js and Font Awesome, vendored for offline use
+├── tailwind.config.js      # Tailwind content paths and theme
+├── scripts/vendor.sh       # Fetches pinned Chart.js / Font Awesome releases (dev only)
 ├── Dockerfile              # Multi-stage build
 ├── docker-compose.yml      # Server + Worker + Redis
 ├── Makefile                # Build/run shortcuts
@@ -64,6 +70,19 @@ make worker
 
 The server starts at http://localhost:51111 (override with `PORT` in `.env`). Log in with the superadmin credentials from `.env`. Both binaries load `.env` from the working directory automatically; real environment variables take precedence.
 
+### Frontend assets
+
+The UI has **no runtime CDN dependency**: Tailwind is compiled to `static/css/app.css`, and Chart.js and Font Awesome are vendored under `static/vendor/`. These outputs are committed, so running, building and the Docker image need only Go.
+
+No Node is involved. Tailwind runs as its standalone binary, downloaded once into `bin/` by the Makefile, and libraries are fetched with `curl` from pinned release URLs. Rebuild only after changing templates or `static/css/input.css`, or to upgrade a library:
+
+```bash
+make css          # download Tailwind binary if missing, rebuild app.css
+make css-watch    # rebuild on every template change
+make vendor       # re-fetch Chart.js and Font Awesome (versions pinned in scripts/vendor.sh)
+make frontend     # vendor + css
+```
+
 ### Docker Compose
 
 ```bash
@@ -80,6 +99,8 @@ Access at http://localhost:51111.
 
 | Command | Description |
 |---------|-------------|
+| `make run` / `make worker` | Build and run the server / worker locally |
+| `make frontend` / `make css` | Rebuild vendored assets and Tailwind CSS (standalone binary, no Node) |
 | `make deploy` | Build with layer cache and restart (fast for code-only changes) |
 | `make deploy-full` | Full rebuild without cache (needed when Dockerfile changes) |
 | `make restart` | Restart containers without rebuilding |
@@ -114,13 +135,32 @@ Two layers of locking prevent race conditions:
 ### Live Updates (SSE)
 Connect to `/api/sse/scans/:run_id/events` for real-time progress:
 - `progress` events from nmap `--stats-every` parsing
-- `status` events (starting, running, completed, failed)
+- `status` events (starting, running, completed, failed, cancelled)
 - Heartbeat keepalive for connection stability
+
+### Cancelling Scans
+`POST /api/scans/runs/:id/cancel` stops a run. Queued runs are finalised immediately. For running scans the API sets a short-lived Redis flag (`nmapwebui:scan:{run_id}:cancel`); the worker polls it once a second, kills the nmap process and marks the run `cancelled`.
+
+### Report Diff
+`GET /api/reports/:id/diff` compares a report with the previous report of the same task: hosts that appeared or disappeared, up/down status changes, and per-host ports that opened, closed or changed service/version. The report page renders this as a "Changes since previous scan" panel and marks new and closed ports inline.
+
+### Host Inventory and Exposure
+`GET /api/hosts` aggregates the latest report of every task into one row per IP address: status, open ports, services, which tasks cover it, first and last seen. `GET /api/hosts/:ip` adds the port history across all reports. Open ports are tagged by a heuristic in `internal/services/exposure.go` ("high" for remote-admin, database, file-sharing and ICS services such as Telnet, RDP, SMB, Redis or Modbus; "medium" for services worth an inventory check such as SSH or alternate HTTP). It is a prioritisation aid, not a vulnerability rating.
+
+### Command Palette and Shortcuts
+`Ctrl/⌘ K` or `/` opens a palette that searches hosts, tasks, target groups, reports and runs (`GET /api/search?q=`) and lists navigation commands. `g` followed by `d/h/a/t/r/p/s` jumps to a section, `n` creates a task, `d` toggles compact table density and `?` lists everything.
+
+### Account Settings
+`/settings` lets each user change their email, the timezone used to evaluate schedules, and their password (`GET/PUT /api/me`). Last login is recorded on sign-in.
+
+### Health
+`GET /api/health` reports Redis reachability, the number of worker processes with a live heartbeat, and the queue depth. The UI header indicator polls it so a missing worker is visible immediately.
 
 ### Report Management
 Nmap outputs saved as:
 - **XML** (`-oX`) — parsed into structured Host/Port findings
 - **Normal text** (`-oN`) — raw output for download
+- **PDF** and **HTML** — generated on demand from the parsed findings. PDFs are drawn in pure Go with [go-pdf/fpdf](https://github.com/go-pdf/fpdf); no external renderer is required.
 
 ### Authentication
 - JWT access tokens (cookie + Bearer header)
@@ -132,10 +172,14 @@ Nmap outputs saved as:
 | Prefix | Description |
 |--------|-------------|
 | `/api/auth` | Login, register, logout |
-| `/api/targets` | CRUD for target groups & hosts |
-| `/api/scans` | Scan tasks & runs (profiles, triggers) |
+| `/api/targets` | CRUD for target groups & hosts (`PUT /api/targets/:id` replaces the target list) |
+| `/api/scans` | Scan tasks & runs. Lists support `q`, `scheduled`, `status`, `task_id` filters; `POST .../runs/:id/cancel` stops a run |
 | `/api/schedules` | Enable/disable scheduled scanning |
-| `/api/reports` | View reports, download XML/TXT |
+| `/api/reports` | List (filter by `task_id`, `from`, `to`, `q`), view, diff, download XML/TXT/CSV/PDF |
+| `/api/hosts` | Host inventory from the latest report per task; `/api/hosts/:ip` for detail and history |
+| `/api/search` | Global search for the command palette |
+| `/api/me` | Own profile: email, timezone, password |
+| `/api/health` | Redis, worker heartbeat and queue depth |
 | `/api/admin` | Admin stats & user listing |
 | `/api/sse` | Server-Sent Events for live scan progress |
 

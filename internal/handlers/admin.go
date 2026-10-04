@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -19,17 +20,18 @@ func ListUsers(c *gin.Context) {
 	db.DB.Order("id ASC").Offset(offset(page, perPage)).Limit(perPage).Find(&users)
 
 	type SafeUser struct {
-		ID       uint   `json:"ID"`
-		Username string `json:"Username"`
-		Email    string `json:"Email"`
-		Role     string `json:"Role"`
-		Active   bool   `json:"Active"`
+		ID        uint       `json:"ID"`
+		Username  string     `json:"Username"`
+		Email     string     `json:"Email"`
+		Role      string     `json:"Role"`
+		Active    bool       `json:"Active"`
+		LastLogin *time.Time `json:"LastLogin"`
 	}
-	var safe []SafeUser
+	safe := []SafeUser{}
 	for _, u := range users {
 		safe = append(safe, SafeUser{
 			ID: u.ID, Username: u.Username, Email: u.Email,
-			Role: u.Role, Active: u.Active,
+			Role: u.Role, Active: u.Active, LastLogin: u.LastLogin,
 		})
 	}
 	c.JSON(http.StatusOK, paginatedResponse(safe, total, page, perPage))

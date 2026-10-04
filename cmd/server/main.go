@@ -56,9 +56,7 @@ func main() {
 
 	api := router.Group("/api")
 	{
-		api.GET("/health", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"status": "ok", "app": cfg.AppName})
-		})
+		api.GET("/health", handlers.Health(cfg))
 		api.GET("/server-time", func(c *gin.Context) {
 			now := time.Now()
 			resp := gin.H{
@@ -86,10 +84,12 @@ func main() {
 			authorized.GET("/targets", handlers.ListTargetGroups)
 			authorized.POST("/targets", handlers.CreateTargetGroup)
 			authorized.GET("/targets/:id", handlers.GetTargetGroup)
+			authorized.PUT("/targets/:id", handlers.UpdateTargetGroup)
 			authorized.DELETE("/targets/:id", handlers.DeleteTargetGroup)
 
 			authorized.GET("/scans/profiles", handlers.ListScanProfiles)
 			authorized.GET("/scans/tasks", handlers.ListScanTasks)
+			authorized.GET("/scans/tasks/options", handlers.ListScanTaskOptions)
 			authorized.POST("/scans/tasks", handlers.CreateScanTask)
 			authorized.GET("/scans/tasks/:id", handlers.GetScanTask)
 			authorized.PUT("/scans/tasks/:id", handlers.UpdateScanTask)
@@ -97,15 +97,22 @@ func main() {
 			authorized.POST("/scans/tasks/:id/run", handlers.RunScanTask(cfg))
 			authorized.GET("/scans/runs", handlers.ListScanRuns)
 			authorized.GET("/scans/runs/:id", handlers.GetScanRun)
+			authorized.POST("/scans/runs/:id/cancel", handlers.CancelScanRun)
 
 			authorized.POST("/schedules/tasks/:id/schedule", handlers.ScheduleTask)
 			authorized.POST("/schedules/tasks/:id/unschedule", handlers.UnscheduleTask)
 
 			authorized.GET("/reports", handlers.ListReports)
 			authorized.GET("/reports/:id", handlers.GetReport)
+			authorized.GET("/reports/:id/diff", handlers.GetReportDiff)
 			authorized.GET("/reports/:id/download/:format", handlers.DownloadReport)
 
 			authorized.GET("/dashboard/stats", handlers.GetDashboardStats)
+			authorized.GET("/search", handlers.Search)
+			authorized.GET("/hosts", handlers.ListHosts)
+			authorized.GET("/hosts/:ip", handlers.GetHost)
+			authorized.GET("/me", handlers.GetMe)
+			authorized.PUT("/me", handlers.UpdateMe)
 
 			authorized.GET("/sse/scans/:run_id/events", handlers.ScanEvents)
 
@@ -131,6 +138,8 @@ func main() {
 	router.GET("/runs", handlers.ScanRunsPage)
 	router.GET("/reports", handlers.ReportsPage)
 	router.GET("/reports/:id", handlers.ReportViewPage)
+	router.GET("/hosts", handlers.HostsPage)
+	router.GET("/settings", handlers.SettingsPage)
 	router.GET("/admin/users", handlers.AdminUsersPage)
 
 	port := os.Getenv("PORT")

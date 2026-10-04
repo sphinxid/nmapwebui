@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -42,6 +43,9 @@ func Login(cfg *config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"detail": err.Error()})
 			return
 		}
+
+		now := time.Now()
+		db.DB.Model(&user).Update("last_login", now)
 
 		c.SetCookie("access_token", token, cfg.AccessTokenExpireMin*60, "/", "", false, true)
 		c.JSON(http.StatusOK, gin.H{"access_token": token, "token_type": "bearer"})

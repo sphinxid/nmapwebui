@@ -74,3 +74,54 @@ func ScanQueueKey() string {
 func ScheduleLastRunKey(taskID uint) string {
 	return fmt.Sprintf("nmapwebui:schedule:last_run:%d", taskID)
 }
+
+// ScanCancelKey is set by the API server to request cancellation of a run.
+// The worker polls it while nmap is executing and kills the process when it
+// appears. The key carries a TTL so stale requests expire on their own.
+func ScanCancelKey(scanRunID uint) string {
+	return fmt.Sprintf("nmapwebui:scan:%d:cancel", scanRunID)
+}
+
+// WorkerHeartbeatKey identifies a live worker process. Workers refresh it
+// every few seconds with a short TTL so the API can count active workers.
+func WorkerHeartbeatKey(workerID string) string {
+	return "nmapwebui:worker:" + workerID
+}
+
+// WorkerHeartbeatPattern matches every worker heartbeat key.
+func WorkerHeartbeatPattern() string {
+	return "nmapwebui:worker:*"
+}
+
+// RequestCancel flags a scan run for cancellation.
+func RequestCancel(ctx context.Context, scanRunID uint) error {
+	return redisClient.Set(ctx, ScanCancelKey(scanRunID), "1", time.Hour).Err()
+}
+
+// CancelRequested reports whether a cancellation flag exists for the run.
+func CancelRequested(ctx context.Context, scanRunID uint) bool {
+	n, err := redisClient.Exists(ctx, ScanCancelKey(scanRunID)).Result()
+	return err == nil && n > 0
+}
+
+// ClearCancel removes a run's cancellation flag.
+func ClearCancel(ctx context.Context, scanRunID uint) {
+	redisClient.Del(ctx, ScanCancelKey(scanRunID))
+}
+
+// CountWorkers returns the number of worker processes with a live heartbeat.
+func CountWorkers(ctx context.Context) int {
+	var cursor uint64
+	count := 0
+	for {
+		keys, next, err := redisClient.Scan(ctx, cursor, WorkerHeartbeatPattern(), 100).Result()
+		if err != nil {
+			return count
+		}
+		count += len(keys)
+		cursor = next
+		if cursor == 0 {
+			return count
+		}
+	}
+}

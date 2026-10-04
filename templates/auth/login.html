@@ -1,204 +1,66 @@
 <!DOCTYPE html>
 <html lang="en">
 {{template "head" .}}
-<body class="bg-gray-950 text-gray-100 min-h-screen">
-    <!-- Background Pattern -->
-    <div class="fixed inset-0 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
-        <div class="absolute inset-0 bg-black/50"></div>
-        <div class="absolute inset-0 opacity-5">
-    <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
-        <defs>
-            <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
-                <path d="M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z" fill="#10b981"/>
-            </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#grid)" />
-    </svg>
-</div>
-    </div>
-
-    <!-- Login Container -->
-    <div class="relative min-h-screen flex items-center justify-center px-4">
-        <div class="w-full max-w-md">
-            <!-- Logo and Brand -->
-            <div class="text-center mb-8">
-                <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-primary rounded-2xl mb-4 shadow-2xl">
-                    <i class="fas fa-network-wired text-white text-3xl"></i>
-                </div>
-                <h1 class="text-3xl font-bold text-white mb-2">NmapWebUI</h1>
-                <p class="text-gray-400">Network Security Scanner Platform</p>
+<body class="min-h-screen flex items-center justify-center p-4 bg-gray-950 bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.12),transparent_60%)]">
+    <main class="w-full max-w-sm">
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-14 h-14 bg-primary-600 rounded-2xl mb-4 shadow-lg shadow-primary-900/40">
+                <i class="fas fa-network-wired text-white text-2xl"></i>
             </div>
-
-            <!-- Login Card -->
-            <div class="glass-effect rounded-2xl p-8 shadow-2xl border border-gray-800">
-                <!-- Security Badge -->
-                <div class="flex items-center justify-center mb-6">
-                    <div class="flex items-center space-x-2 bg-green-500/10 border border-green-500/20 rounded-full px-4 py-2">
-                        <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span class="text-green-400 text-sm font-medium">Secure Connection</span>
-                    </div>
-                </div>
-
-                <!-- Login Form -->
-                <form id="loginForm" action="/api/auth/login" method="POST" autocomplete="on" class="space-y-6">
-                    <div>
-                        <label for="username" class="block text-sm font-medium text-gray-300 mb-2">
-                            <i class="fas fa-user mr-2 text-gray-400"></i>Username
-                        </label>
-                        <input 
-                            type="text" 
-                            id="username"
-                            name="username" 
-                            required 
-                            class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                            placeholder="Enter your username"
-                            autocomplete="username"
-                        >
-                    </div>
-                    
-                    <div>
-                        <label for="password" class="block text-sm font-medium text-gray-300 mb-2">
-                            <i class="fas fa-lock mr-2 text-gray-400"></i>Password
-                        </label>
-                        <div class="relative">
-                            <input 
-                                type="password" 
-                                id="password"
-                                name="password" 
-                                required 
-                                class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-3 pr-12 text-white placeholder-gray-500 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                placeholder="Enter your password"
-                                autocomplete="current-password"
-                            >
-                            <button 
-                                type="button" 
-                                onclick="togglePassword()"
-                                class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
-                            >
-                                <i id="passwordToggle" class="fas fa-eye"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Error Message -->
-                    <div id="errorMsg" class="hidden bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-400 text-sm">
-                        <i class="fas fa-exclamation-triangle mr-2"></i>
-                        <span id="errorText"></span>
-                    </div>
-
-                    <!-- Login Button -->
-                    <button 
-                        type="submit" 
-                        id="loginBtn"
-                        class="w-full btn-primary py-3 text-lg font-semibold shadow-lg flex items-center justify-center space-x-2"
-                    >
-                        <i class="fas fa-sign-in-alt"></i>
-                        <span>Sign In</span>
-                        <div id="loginSpinner" class="hidden">
-                            <i class="fas fa-spinner fa-spin"></i>
-                        </div>
-                    </button>
-                </form>
-
-                <!-- Additional Information -->
-                <div class="mt-6 pt-6 border-t border-gray-800">
-                    <div class="flex items-center justify-center space-x-4 text-sm text-gray-400">
-                        <div class="flex items-center space-x-1">
-                            <i class="fas fa-shield-alt text-green-400"></i>
-                            <span>Enterprise Security</span>
-                        </div>
-                        <div class="flex items-center space-x-1">
-                            <i class="fas fa-lock text-green-400"></i>
-                            <span>256-bit Encryption</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Help Text -->
-                <p class="mt-4 text-center text-sm text-gray-500">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    Contact your administrator for account access
-                </p>
-            </div>
-
-            <!-- Footer -->
-            <div class="mt-8 text-center text-sm text-gray-500">
-                <p>&copy; 2024 NmapWebUI. Professional Network Security Scanning.</p>
-            </div>
+            <h1 class="text-2xl font-bold text-white">NmapWebUI</h1>
+            <p class="text-sm text-gray-400 mt-1">Sign in to continue</p>
         </div>
-    </div>
+
+        <form id="loginForm" action="/api/auth/login" method="POST" autocomplete="on" class="card p-6 space-y-5" novalidate>
+            <div>
+                <label for="username" class="label">Username</label>
+                <input type="text" id="username" name="username" required autocomplete="username" autocapitalize="none" spellcheck="false" class="input py-2.5" autofocus>
+            </div>
+            <div>
+                <label for="password" class="label">Password</label>
+                <div class="relative">
+                    <input type="password" id="password" name="password" required autocomplete="current-password" class="input py-2.5 pr-11">
+                    <button type="button" id="togglePw" class="absolute right-1 top-1/2 -translate-y-1/2 btn-icon w-8 h-8" aria-label="Show password" aria-pressed="false"><i class="fas fa-eye"></i></button>
+                </div>
+            </div>
+            <div id="errorMsg" class="form-error hidden" role="alert"></div>
+            <button type="submit" id="loginBtn" class="btn-primary w-full py-2.5">
+                <span id="loginBtnText">Sign in</span>
+                <i id="loginSpinner" class="fas fa-circle-notch fa-spin hidden"></i>
+            </button>
+        </form>
+
+        <p class="mt-6 text-center text-xs text-gray-500">No account? Ask your administrator to create one.</p>
+    </main>
 
     <script>
-    function togglePassword() {
-        const passwordInput = document.getElementById('password');
-        const passwordToggle = document.getElementById('passwordToggle');
-        
-        if (passwordInput.type === 'password') {
-            passwordInput.type = 'text';
-            passwordToggle.classList.remove('fa-eye');
-            passwordToggle.classList.add('fa-eye-slash');
-        } else {
-            passwordInput.type = 'password';
-            passwordToggle.classList.remove('fa-eye-slash');
-            passwordToggle.classList.add('fa-eye');
-        }
-    }
+    const pw = document.getElementById('password');
+    document.getElementById('togglePw').addEventListener('click', function () {
+        const show = pw.type === 'password';
+        pw.type = show ? 'text' : 'password';
+        this.querySelector('i').className = `fas ${show ? 'fa-eye-slash' : 'fa-eye'}`;
+        this.setAttribute('aria-pressed', String(show));
+        this.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    });
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        
         const form = e.target;
-        const formData = new FormData(form);
         const errorMsg = document.getElementById('errorMsg');
-        const errorText = document.getElementById('errorText');
-        const loginBtn = document.getElementById('loginBtn');
-        const loginSpinner = document.getElementById('loginSpinner');
-        
-        // Hide error message
+        const btn = document.getElementById('loginBtn');
         errorMsg.classList.add('hidden');
-        
-        // Show loading state
-        loginBtn.disabled = true;
-        loginBtn.classList.add('opacity-75');
-        loginSpinner.classList.remove('hidden');
-        
-        try {
-            const res = await fetch('/api/auth/login', { 
-                method: 'POST', 
-                body: formData, 
-                credentials: 'same-origin' 
-            });
-            
-            if (res.ok) {
-                // Success - redirect to dashboard
-                window.location.href = '/';
-            } else {
-                // Error - show message
-                const data = await res.json();
-                errorText.textContent = data.detail || 'Login failed. Please check your credentials.';
-                errorMsg.classList.remove('hidden');
-            }
-        } catch (error) {
-            errorText.textContent = 'Network error. Please try again.';
+        if (!form.username.value.trim() || !form.password.value) { errorMsg.textContent = 'Enter your username and password.'; errorMsg.classList.remove('hidden'); return; }
+        btn.disabled = true; document.getElementById('loginSpinner').classList.remove('hidden');
+        const r = await api('/api/auth/login', { method: 'POST', body: new FormData(form) });
+        btn.disabled = false; document.getElementById('loginSpinner').classList.add('hidden');
+        if (r.ok) {
+            const next = new URLSearchParams(window.location.search).get('next');
+            window.location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+        } else {
+            errorMsg.textContent = errorDetail(r, 'Sign in failed. Check your credentials and try again.');
             errorMsg.classList.remove('hidden');
-        } finally {
-            // Hide loading state
-            loginBtn.disabled = false;
-            loginBtn.classList.remove('opacity-75');
-            loginSpinner.classList.add('hidden');
+            form.password.focus(); form.password.select();
         }
-    });
-
-    // Add enter key support for form fields
-    document.getElementById('username').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            document.getElementById('password').focus();
-        }
-    });
-
-    // Auto-focus username field
-    document.addEventListener('DOMContentLoaded', () => {
-        document.getElementById('username').focus();
     });
     </script>
 </body>

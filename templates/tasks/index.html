@@ -1,135 +1,137 @@
 <!DOCTYPE html>
 <html lang="en">
 {{template "head" .}}
-<body class="bg-gray-900 text-gray-100 min-h-screen">
+<body>
 {{template "nav" .}}
-<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-<div class="flex items-center justify-between mb-6">
-    <h1 class="text-2xl font-bold">Scan Tasks</h1>
-    <div class="flex items-center gap-3">
-        <div class="flex items-center gap-1">
-            <span class="text-xs text-gray-500 mr-1">Per page:</span>
-            <button onclick="setPerPage(20)" data-pp="20" class="pp-btn px-2 py-0.5 rounded text-xs border border-emerald-500 bg-emerald-900 text-emerald-300">20</button>
-            <button onclick="setPerPage(50)" data-pp="50" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">50</button>
-            <button onclick="setPerPage(100)" data-pp="100" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">100</button>
-            <button onclick="setPerPage(500)" data-pp="500" class="pp-btn px-2 py-0.5 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600">500</button>
-        </div>
-        <a href="/tasks/create" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium transition"><i class="fas fa-plus mr-2"></i>New Task</a>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Scan Tasks</h1>
+        <p class="page-subtitle">A task combines a scan profile with one or more target groups. Run it on demand or on a schedule.</p>
     </div>
-</div>
-<div id="tasksContainer" class="space-y-4">
-    <div class="text-center text-gray-500 py-8">Loading tasks...</div>
+    <a href="/tasks/create" class="btn-primary"><i class="fas fa-plus"></i>New Task</a>
 </div>
 
-<div id="paginationControls" class="hidden flex items-center justify-between mt-4">
-    <span class="text-sm text-gray-400" id="pageInfo"></span>
-    <div class="flex items-center gap-2">
-        <button onclick="goPage(currentPage-1)" id="prevBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Prev</button>
-        <span class="text-sm text-gray-400" id="pageNums"></span>
-        <button onclick="goPage(currentPage+1)" id="nextBtn" class="px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition">Next</button>
+<div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+    <div class="relative flex-1 max-w-md">
+        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+        <input type="search" id="searchInput" class="input pl-9" placeholder="Search tasks by name…" aria-label="Search tasks">
     </div>
+    <select id="scheduledFilter" class="select w-auto" aria-label="Filter by schedule">
+        <option value="">All tasks</option>
+        <option value="1">Scheduled only</option>
+        <option value="0">Unscheduled only</option>
+    </select>
+    <div id="perPageHost" class="sm:ml-auto flex items-center"></div>
 </div>
+
+<div id="tasksContainer" class="space-y-3"></div>
+<div id="paginationControls" class="hidden flex items-center justify-between mt-4"></div>
 
 <script>
-let currentPage = 1;
-let perPage = 20;
-let totalPages = 1;
+const container = document.getElementById('tasksContainer');
+const searchInput = document.getElementById('searchInput');
+const scheduledFilter = document.getElementById('scheduledFilter');
+searchInput.value = getParam('q');
+scheduledFilter.value = getParam('scheduled');
 
-function setPerPage(n) {
-    perPage = n;
-    currentPage = 1;
-    document.querySelectorAll('.pp-btn').forEach(b => {
-        const active = parseInt(b.dataset.pp) === n;
-        b.className = 'pp-btn px-2 py-0.5 rounded text-xs border ' + (active ? 'border-emerald-500 bg-emerald-900 text-emerald-300' : 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600');
-    });
-    loadTasks();
+const pager = new Paginator({ perPageHost: 'perPageHost', controlsHost: 'paginationControls', onChange: loadTasks });
+
+let searchTimer;
+searchInput.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { pager.reset(); setParams({ q: searchInput.value.trim() }); loadTasks(); }, 300); });
+scheduledFilter.addEventListener('change', () => { pager.reset(); setParams({ scheduled: scheduledFilter.value }); loadTasks(); });
+
+function lastRunLine(t) {
+    if (t.active_run) {
+        return `<span class="text-amber-300"><i class="fas fa-spinner fa-spin mr-1"></i>${t.active_run.status === 'running' ? `Running · ${t.active_run.progress || 0}%` : 'Queued'}</span>
+                <a href="/tasks/run/${t.active_run.id}" class="text-primary-400 hover:underline ml-2">Watch live</a>`;
+    }
+    if (!t.last_run) return '<span class="text-gray-500">Never run</span>';
+    const r = t.last_run;
+    const when = r.completed_at || r.started_at || r.created_at;
+    const icon = r.status === 'completed' ? 'fa-check text-emerald-400' : r.status === 'failed' ? 'fa-times text-red-400' : 'fa-ban text-gray-400';
+    return `<i class="fas ${icon} mr-1"></i>${STATUS_META[r.status] ? STATUS_META[r.status].label : r.status} ${timeCell(when)}${r.status === 'failed' && r.error_message ? `<span class="text-gray-500 ml-1" title="${escapeHtml(r.error_message)}"><i class="fas fa-info-circle"></i></span>` : ''}`;
 }
-function goPage(p) { if (p >= 1 && p <= totalPages) { currentPage = p; loadTasks(); } }
 
-function updatePagination(data) {
-    totalPages = data.pages;
-    const controls = document.getElementById('paginationControls');
-    if (data.total <= data.per_page && data.page === 1) { controls.classList.add('hidden'); return; }
-    controls.classList.remove('hidden');
-    const start = (data.page - 1) * data.per_page + 1;
-    const end = Math.min(data.page * data.per_page, data.total);
-    document.getElementById('pageInfo').textContent = `Showing ${start}-${end} of ${data.total}`;
-    document.getElementById('pageNums').textContent = `Page ${data.page} of ${data.pages}`;
-    document.getElementById('prevBtn').disabled = data.page <= 1;
-    document.getElementById('nextBtn').disabled = data.page >= data.pages;
+function nextRunLine(t) {
+    if (!t.IsScheduled) return '';
+    if (!t.next_run) return '<span class="badge-blue"><i class="fas fa-clock"></i>Scheduled</span>';
+    return `<span class="badge-blue" title="${escapeHtml(formatDateTime(t.next_run))}"><i class="fas fa-clock"></i>Next ${relativeTime(t.next_run)}</span>`;
+}
+
+function summaryBlock(s) {
+    if (!s) return '';
+    const rows = (s.top_ports || []).map(p => `
+        <tr>
+            <td class="py-1 pr-3 font-mono text-xs text-gray-200">${escapeHtml(p.ip_address)}</td>
+            <td class="py-1 pr-3 font-mono text-xs text-primary-300">${p.port_number}/${escapeHtml(p.protocol)}</td>
+            <td class="py-1 pr-3 text-xs text-blue-300">${escapeHtml(p.service || '-')}</td>
+            <td class="py-1 text-xs text-gray-400 truncate max-w-[16rem]">${escapeHtml(p.version || '-')}</td>
+        </tr>`).join('');
+    const more = s.total_open > 10 ? `<span class="text-xs text-gray-500">+${s.total_open - 10} more</span>` : '';
+    return `
+        <details class="mt-3 group">
+            <summary class="flex items-center gap-3 text-xs cursor-pointer select-none text-gray-400 hover:text-gray-200">
+                <i class="fas fa-chevron-right text-[10px] transition-transform group-open:rotate-90"></i>
+                <span class="text-primary-300 font-medium"><i class="fas fa-plug mr-1"></i>${pluralize(s.total_open, 'open port')}</span>
+                <span>${pluralize(s.total_hosts, 'host')}</span>
+                <a href="/reports/${s.report_id}" class="ml-auto text-blue-400 hover:underline" onclick="event.stopPropagation()">Latest report <i class="fas fa-arrow-right text-[10px]"></i></a>
+            </summary>
+            <div class="mt-2 rounded-md border border-gray-800 bg-gray-950/60 px-3 py-2 overflow-x-auto">
+                ${rows ? `<table class="w-full"><thead><tr class="text-left text-[11px] uppercase tracking-wider text-gray-500"><th class="pb-1 pr-3 font-medium">Host</th><th class="pb-1 pr-3 font-medium">Port</th><th class="pb-1 pr-3 font-medium">Service</th><th class="pb-1 font-medium">Version</th></tr></thead><tbody class="divide-y divide-gray-800">${rows}</tbody></table>${more}` : '<span class="text-xs text-gray-500">No open ports found in the last scan.</span>'}
+            </div>
+        </details>`;
 }
 
 async function loadTasks() {
-    const res = await fetch(`/api/scans/tasks?page=${currentPage}&per_page=${perPage}`, { credentials: 'same-origin' });
-    if (!res.ok) { document.getElementById('tasksContainer').innerHTML = '<div class="text-red-400 text-center">Failed to load tasks</div>'; return; }
-    const data = await res.json();
-    const tasks = data.items || [];
-    const container = document.getElementById('tasksContainer');
-    if (tasks.length === 0 && data.total === 0) {
-        container.innerHTML = '<div class="text-gray-500 text-center py-8">No scan tasks yet. <a href="/tasks/create" class="text-emerald-400 hover:underline">Create one</a>.</div>';
-        document.getElementById('paginationControls').classList.add('hidden');
+    container.innerHTML = `<div class="empty"><i class="fas fa-circle-notch fa-spin"></i>Loading tasks…</div>`;
+    const q = encodeURIComponent(searchInput.value.trim());
+    const r = await api(`/api/scans/tasks?${pager.query()}&q=${q}&scheduled=${scheduledFilter.value}`);
+    if (!r.ok) { container.innerHTML = `<div class="empty text-red-400"><i class="fas fa-triangle-exclamation"></i>${escapeHtml(errorDetail(r, 'Failed to load tasks'))}</div>`; return; }
+    const data = r.data, tasks = data.items || [];
+    pager.update(data);
+    if (!tasks.length) {
+        container.innerHTML = data.total === 0 && !q && !scheduledFilter.value
+            ? `<div class="card empty"><i class="fas fa-crosshairs"></i><p class="text-gray-300 font-medium">No scan tasks yet</p><p class="text-sm mt-1">Create a task to start scanning your targets.</p><a href="/tasks/create" class="btn-primary mt-4"><i class="fas fa-plus"></i>New Task</a></div>`
+            : `<div class="card empty"><i class="fas fa-search"></i><p>No tasks match your filter.</p></div>`;
         return;
     }
-    container.innerHTML = tasks.map(t => {
-        const s = t.last_scan_summary;
-        let summaryHtml = '';
-        if (s) {
-            const portRows = (s.top_ports || []).map(p =>
-                `<tr class="border-t border-gray-700">
-                    <td class="py-1 pr-3 font-mono text-xs text-gray-200">${escapeHtml(p.ip_address)}</td>
-                    <td class="py-1 pr-3 font-mono text-xs text-emerald-300">${p.port_number}/${escapeHtml(p.protocol)}</td>
-                    <td class="py-1 pr-3 text-xs text-blue-300">${escapeHtml(p.service || '-')}</td>
-                    <td class="py-1 text-xs text-gray-400">${escapeHtml(p.version || '-')}</td>
-                </tr>`
-            ).join('');
-            const moreBadge = s.total_open > 10
-                ? `<span class="ml-2 text-xs text-gray-500">+${s.total_open - 10} more</span>`
-                : '';
-            summaryHtml = `
-            <div class="mt-3 border border-gray-700 rounded-md bg-gray-900 px-3 pt-2 pb-2">
-                <div class="flex items-center gap-4 mb-2">
-                    <span class="text-xs text-gray-400">Last scan:</span>
-                    <span class="text-xs font-medium text-emerald-400"><i class="fas fa-plug mr-1"></i>${s.total_open} open port${s.total_open !== 1 ? 's' : ''}</span>
-                    <span class="text-xs text-gray-400">${s.total_hosts} host${s.total_hosts !== 1 ? 's' : ''}</span>
-                    <a href="/reports/${s.report_id}" class="text-xs text-blue-400 hover:underline ml-auto">View Report #${s.report_id}</a>
+    container.innerHTML = tasks.map(t => `
+        <div class="card p-4 sm:p-5">
+            <div class="flex flex-col sm:flex-row sm:items-start gap-3">
+                <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <a href="/tasks/view/${t.ID}" class="text-lg font-semibold text-white hover:text-primary-400">${escapeHtml(t.Name)}</a>
+                        ${nextRunLine(t)}
+                    </div>
+                    <div class="text-sm text-gray-400 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                        <span><i class="fas fa-sliders mr-1 text-gray-500"></i>${escapeHtml(t.ScanProfile || (t.CustomArgs ? 'Custom: ' + t.CustomArgs : 'Default'))}</span>
+                        <span><i class="fas fa-bullseye mr-1 text-gray-500"></i>${pluralize((t.TargetGroups || []).length, 'group')} · ${pluralize(t.target_count || 0, 'target')}</span>
+                    </div>
+                    <div class="text-sm mt-2 text-gray-300">${lastRunLine(t)}</div>
                 </div>
-                ${portRows ? `<table class="w-full">
-                    <thead><tr>
-                        <th class="text-left text-xs text-gray-500 font-semibold pb-1 pr-3">IP</th>
-                        <th class="text-left text-xs text-gray-500 font-semibold pb-1 pr-3">Port</th>
-                        <th class="text-left text-xs text-gray-500 font-semibold pb-1 pr-3">Service</th>
-                        <th class="text-left text-xs text-gray-500 font-semibold pb-1">Version</th>
-                    </tr></thead>
-                    <tbody>${portRows}</tbody>
-                </table>${moreBadge}` : '<span class="text-xs text-gray-500">No open ports found.</span>'}
-            </div>`;
-        }
-        return `
-        <div class="bg-gray-800 rounded-lg p-4 shadow hover:shadow-lg transition">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h3 class="font-semibold text-lg">${escapeHtml(t.Name)}</h3>
-                    <p class="text-sm text-gray-400">${t.ScanProfile || 'Custom'} &bull; ${(t.TargetGroups || []).length} target groups</p>
-                    ${t.IsScheduled ? '<span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded mt-1 inline-block">Scheduled</span>' : ''}
-                </div>
-                <div class="flex items-center space-x-2">
-                    <button onclick="runTask(${t.ID})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-play mr-1"></i>Run</button>
-                    <a href="/tasks/view/${t.ID}" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition">View</a>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    ${t.active_run
+                        ? `<button type="button" class="btn-danger-ghost btn-sm" onclick="cancelRun(${t.active_run.id})"><i class="fas fa-ban"></i>Cancel</button>`
+                        : `<button type="button" class="btn-primary btn-sm" onclick="runTask(${t.ID})"><i class="fas fa-play"></i>Run</button>`}
+                    <a href="/tasks/view/${t.ID}" class="btn-secondary btn-sm">Details</a>
                 </div>
             </div>
-            ${summaryHtml}
-        </div>`;
-    }).join('');
-    updatePagination(data);
+            ${summaryBlock(t.last_scan_summary)}
+        </div>`).join('');
 }
+
 async function runTask(id) {
-    const res = await fetch(`/api/scans/tasks/${id}/run`, { method: 'POST', credentials: 'same-origin' });
-    if (res.ok) { const run = await res.json(); window.location.href = `/tasks/run/${run.ID}`; }
-    else { const err = await res.json(); alert(err.detail || 'Failed to start scan'); }
+    const r = await api(`/api/scans/tasks/${id}/run`, { method: 'POST' });
+    if (r.ok) window.location.href = `/tasks/run/${r.data.ID}`;
+    else toast.error(errorDetail(r, 'Failed to start scan'));
 }
-function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+async function cancelRun(id) {
+    if (!await confirmDialog({ title: 'Cancel this scan?', message: 'The running nmap process will be killed.', confirmText: 'Cancel scan', danger: true })) return;
+    const r = await api(`/api/scans/runs/${id}/cancel`, { method: 'POST' });
+    if (r.ok) { toast.success(r.data.detail); setTimeout(loadTasks, 1500); } else toast.error(errorDetail(r, 'Could not cancel'));
+}
+
 loadTasks();
 </script>
-</main>
-</body>
-</html>
+{{template "footer" .}}

@@ -36,6 +36,23 @@ func main() {
 
 	fmt.Printf("Worker started with pool size %d, waiting for scan jobs...\n", poolSize)
 
+	// Heartbeat so the API server can report whether any worker is alive.
+	hostname, _ := os.Hostname()
+	heartbeatKey := services.WorkerHeartbeatKey(fmt.Sprintf("%s-%d", hostname, os.Getpid()))
+	rdb.Set(ctx, heartbeatKey, poolSize, 30*time.Second)
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				rdb.Set(ctx, heartbeatKey, poolSize, 30*time.Second)
+			}
+		}
+	}()
+
 	// On startup, mark any leftover running/queued scans as failed.
 	// After a restart no nmap processes survive, so they are all orphaned.
 	services.ReapOnStartup(ctx)
@@ -116,5 +133,6 @@ func main() {
 
 	<-quit
 	fmt.Println("Worker shutting down...")
+	rdb.Del(context.Background(), heartbeatKey)
 	cancel()
 }

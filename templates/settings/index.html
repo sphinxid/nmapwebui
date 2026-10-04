@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body>
+{{template "nav" .}}
+
+<div class="max-w-3xl mx-auto">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Settings</h1>
+            <p class="page-subtitle">Your account, timezone used for schedules, and display preferences.</p>
+        </div>
+    </div>
+
+    <div class="space-y-4">
+        <!-- Profile -->
+        <form id="profileForm" class="card" novalidate>
+            <div class="card-header"><h2 class="card-title">Profile</h2><span id="roleBadge"></span></div>
+            <div class="card-body space-y-4">
+                <div class="grid sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="label">Username</label>
+                        <input type="text" id="username" class="input opacity-70" readonly>
+                    </div>
+                    <div>
+                        <label class="label" for="email">Email</label>
+                        <input type="email" id="email" class="input" autocomplete="email">
+                    </div>
+                </div>
+                <div>
+                    <label class="label" for="timezone">Timezone</label>
+                    <select id="timezone" class="select"></select>
+                    <p class="text-xs text-gray-500 mt-1.5">Schedules are evaluated in this timezone. Browser suggests <span id="browserTz" class="text-gray-300"></span>. <button type="button" class="text-primary-400 hover:underline" onclick="useBrowserTz()">Use it</button></p>
+                </div>
+                <div class="grid sm:grid-cols-2 gap-4 text-sm">
+                    <div><div class="text-xs uppercase tracking-wider text-gray-500 mb-1">Member since</div><div id="createdAt" class="text-gray-300">–</div></div>
+                    <div><div class="text-xs uppercase tracking-wider text-gray-500 mb-1">Last login</div><div id="lastLogin" class="text-gray-300">–</div></div>
+                </div>
+                <div id="profileError" class="form-error hidden"></div>
+            </div>
+            <div class="modal-footer"><button type="submit" class="btn-primary"><i class="fas fa-save"></i>Save profile</button></div>
+        </form>
+
+        <!-- Password -->
+        <form id="passwordForm" class="card" novalidate>
+            <div class="card-header"><h2 class="card-title">Change password</h2></div>
+            <div class="card-body space-y-4">
+                <div>
+                    <label class="label" for="currentPassword">Current password</label>
+                    <input type="password" id="currentPassword" class="input" autocomplete="current-password" required>
+                </div>
+                <div class="grid sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="label" for="newPassword">New password</label>
+                        <input type="password" id="newPassword" class="input" autocomplete="new-password" minlength="6" required>
+                    </div>
+                    <div>
+                        <label class="label" for="confirmPassword">Confirm new password</label>
+                        <input type="password" id="confirmPassword" class="input" autocomplete="new-password" required>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500">At least 6 characters. You stay signed in on this device after changing it.</p>
+                <div id="passwordError" class="form-error hidden"></div>
+            </div>
+            <div class="modal-footer"><button type="submit" class="btn-primary"><i class="fas fa-key"></i>Update password</button></div>
+        </form>
+
+        <!-- Preferences -->
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">Display</h2><span class="text-xs text-gray-500">stored in this browser</span></div>
+            <div class="card-body space-y-4">
+                <div>
+                    <div class="label">Table density</div>
+                    <div class="segment" role="radiogroup" aria-label="Density">
+                        <button type="button" id="densityComfortable" onclick="setDensity(false)">Comfortable</button>
+                        <button type="button" id="densityCompact" onclick="setDensity(true)">Compact</button>
+                    </div>
+                </div>
+                <div class="text-sm text-gray-400">
+                    Press <kbd>?</kbd> anywhere for keyboard shortcuts, or <kbd>Ctrl</kbd><kbd>K</kbd> for the command palette.
+                    <button type="button" class="text-primary-400 hover:underline ml-1" onclick="showShortcuts()">Show shortcuts</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const tzSelect = document.getElementById('timezone');
+const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+document.getElementById('browserTz').textContent = browserTz;
+
+function fillTimezones(current) {
+    let zones = [];
+    try { zones = Intl.supportedValuesOf('timeZone'); } catch (e) {}
+    if (!zones.length) zones = ['UTC', 'Europe/London', 'Europe/Berlin', 'Europe/Paris', 'Asia/Jakarta', 'Asia/Singapore', 'Asia/Tokyo', 'Asia/Kolkata', 'Australia/Sydney', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Sao_Paulo'];
+    if (!zones.includes('UTC')) zones.unshift('UTC');
+    if (current && !zones.includes(current)) zones.unshift(current);
+    tzSelect.innerHTML = zones.map(z => `<option value="${escapeHtml(z)}">${escapeHtml(z.replace(/_/g, ' '))}</option>`).join('');
+    tzSelect.value = current || 'UTC';
+}
+function useBrowserTz() { if (![...tzSelect.options].some(o => o.value === browserTz)) tzSelect.add(new Option(browserTz, browserTz)); tzSelect.value = browserTz; }
+
+async function loadMe() {
+    const r = await api('/api/me');
+    if (!r.ok) { toast.error(errorDetail(r, 'Could not load your profile')); return; }
+    const m = r.data;
+    document.getElementById('username').value = m.username;
+    document.getElementById('email').value = m.email || '';
+    document.getElementById('roleBadge').innerHTML = `<span class="${m.role === 'superadmin' ? 'badge-purple' : m.role === 'admin' ? 'badge-amber' : 'badge-gray'}">${escapeHtml(m.role)}</span>`;
+    document.getElementById('createdAt').textContent = formatDateTime(m.created_at);
+    document.getElementById('lastLogin').textContent = m.last_login ? `${formatDateTime(m.last_login)} (${relativeTime(m.last_login)})` : 'never';
+    fillTimezones(m.timezone);
+}
+
+document.getElementById('profileForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const err = document.getElementById('profileError'); err.classList.add('hidden');
+    const r = await api('/api/me', { method: 'PUT', body: { email: document.getElementById('email').value.trim(), timezone: tzSelect.value } });
+    if (r.ok) toast.success('Profile saved'); else { err.textContent = errorDetail(r, 'Could not save profile'); err.classList.remove('hidden'); }
+});
+
+document.getElementById('passwordForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const err = document.getElementById('passwordError'); err.classList.add('hidden');
+    const cur = document.getElementById('currentPassword').value, nw = document.getElementById('newPassword').value, cf = document.getElementById('confirmPassword').value;
+    if (nw.length < 6) { err.textContent = 'New password must be at least 6 characters.'; err.classList.remove('hidden'); return; }
+    if (nw !== cf) { err.textContent = 'The new passwords do not match.'; err.classList.remove('hidden'); return; }
+    const r = await api('/api/me', { method: 'PUT', body: { current_password: cur, new_password: nw } });
+    if (r.ok) { toast.success('Password updated'); e.target.reset(); } else { err.textContent = errorDetail(r, 'Could not update password'); err.classList.remove('hidden'); }
+});
+
+function paintDensity() {
+    const compact = document.documentElement.classList.contains('density-compact');
+    document.getElementById('densityCompact').classList.toggle('active', compact);
+    document.getElementById('densityComfortable').classList.toggle('active', !compact);
+}
+function setDensity(compact) { if (document.documentElement.classList.contains('density-compact') !== compact) toggleDensity(); paintDensity(); }
+paintDensity();
+loadMe();
+</script>
+{{template "footer" .}}

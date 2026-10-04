@@ -130,6 +130,20 @@ func ReportViewPage(c *gin.Context) {
 	renderPage(c, "reports/view", PageData{Title: "Report", ActivePage: "reports-view"})
 }
 
+func HostsPage(c *gin.Context) {
+	if !requireUser(c) {
+		return
+	}
+	renderPage(c, "hosts/index", PageData{Title: "Hosts", ActivePage: "hosts"})
+}
+
+func SettingsPage(c *gin.Context) {
+	if !requireUser(c) {
+		return
+	}
+	renderPage(c, "settings/index", PageData{Title: "Settings", ActivePage: "settings"})
+}
+
 func AdminUsersPage(c *gin.Context) {
 	if !requireUser(c) {
 		return

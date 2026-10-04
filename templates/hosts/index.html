@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+{{template "head" .}}
+<body>
+{{template "nav" .}}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Hosts</h1>
+        <p class="page-subtitle">Every address seen in the latest scan of each task. Click a row for ports and history.</p>
+    </div>
+    <div class="flex items-center gap-2">
+        <a href="/tasks" class="btn-secondary"><i class="fas fa-crosshairs"></i>Scan tasks</a>
+    </div>
+</div>
+
+<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5" id="statTiles">
+    <div class="stat"><div class="stat-label">Hosts <i class="fas fa-server text-gray-500"></i></div><div class="stat-value" id="stHosts">–</div><div class="stat-sub" id="stUp"></div></div>
+    <div class="stat"><div class="stat-label">Open ports <i class="fas fa-plug text-gray-500"></i></div><div class="stat-value" id="stPorts">–</div><div class="stat-sub">across current estate</div></div>
+    <div class="stat cursor-pointer hover:border-gray-700" onclick="setExposure('1')"><div class="stat-label">Notable services <i class="fas fa-circle-exclamation text-amber-400"></i></div><div class="stat-value text-amber-300" id="stNotable">–</div><div class="stat-sub">hosts with flagged ports</div></div>
+    <div class="stat cursor-pointer hover:border-gray-700" onclick="setExposure('high')"><div class="stat-label">High exposure <i class="fas fa-triangle-exclamation text-red-400"></i></div><div class="stat-value text-red-300" id="stHigh">–</div><div class="stat-sub">admin, database or ICS ports</div></div>
+    <div class="stat"><div class="stat-label">Shown <i class="fas fa-filter text-gray-500"></i></div><div class="stat-value" id="stShown">–</div><div class="stat-sub">after filters</div></div>
+</div>
+
+<div class="card p-3 mb-4">
+    <div class="flex flex-col lg:flex-row lg:items-center gap-3">
+        <div class="relative flex-1 min-w-[12rem]">
+            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+            <input type="search" id="q" class="input pl-9" placeholder="IP, hostname, OS or service…" aria-label="Filter hosts">
+        </div>
+        <select id="status" class="select w-auto" aria-label="Status"><option value="">Any status</option><option value="up">Up</option><option value="down">Down</option></select>
+        <select id="notable" class="select w-auto" aria-label="Exposure"><option value="">Any exposure</option><option value="1">Notable services</option><option value="high">High exposure only</option></select>
+        <select id="task" class="select w-auto min-w-[11rem]" aria-label="Task"><option value="">All tasks</option></select>
+        <button type="button" id="clearBtn" class="btn-ghost btn-sm invisible"><i class="fas fa-times"></i>Clear</button>
+        <div id="perPageHost" class="lg:ml-auto flex items-center"></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-wrap">
+        <table class="table" id="hostsTable">
+            <thead><tr>
+                <th data-sort="ip" class="w-48">Host</th>
+                <th data-sort="hostname">Hostname</th>
+                <th>Status</th>
+                <th data-sort="open_ports" data-sort-default="desc" class="text-right w-24">Open</th>
+                <th>Services</th>
+                <th data-sort="severity" data-sort-default="desc">Exposure</th>
+                <th>Scanned by</th>
+                <th data-sort="last_seen" data-sort-default="desc">Last seen</th>
+            </tr></thead>
+            <tbody id="hostsBody"></tbody>
+        </table>
+    </div>
+</div>
+<div id="paginationControls" class="hidden flex items-center justify-between mt-4"></div>
+
+<script>
+const els = { q: document.getElementById('q'), status: document.getElementById('status'), notable: document.getElementById('notable'), task: document.getElementById('task') };
+els.q.value = getParam('q'); els.status.value = getParam('status'); els.notable.value = getParam('notable');
+const tbody = document.getElementById('hostsBody');
+const pager = new Paginator({ perPageHost: 'perPageHost', controlsHost: 'paginationControls', onChange: loadHosts });
+let sortState = { key: getParam('sort', 'ip'), dir: getParam('dir', 'asc') };
+initSortable(document.getElementById('hostsTable'), (key, dir) => { sortState = { key, dir }; setParams({ sort: key === 'ip' ? '' : key, dir: dir === 'asc' ? '' : dir }); loadHosts(); }, sortState);
+let hostsCache = [];
+
+function filters() { return { q: els.q.value.trim(), status: els.status.value, notable: els.notable.value, task_id: els.task.value || getParam('task_id') }; }
+function syncClear() { const f = filters(); document.getElementById('clearBtn').classList.toggle('invisible', !f.q && !f.status && !f.notable && !f.task_id); }
+function changed() { pager.reset(); setParams(filters()); syncClear(); loadHosts(); }
+let t; els.q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(changed, 250); });
+[els.status, els.notable, els.task].forEach(el => el.addEventListener('change', changed));
+document.getElementById('clearBtn').addEventListener('click', () => { els.q.value = ''; els.status.value = ''; els.notable.value = ''; els.task.value = ''; changed(); });
+function setExposure(v) { els.notable.value = els.notable.value === v ? '' : v; changed(); }
+
+async function loadTaskOptions() {
+    const r = await api('/api/scans/tasks/options');
+    if (!r.ok) return;
+    r.data.forEach(x => { const o = document.createElement('option'); o.value = x.id; o.textContent = x.name; els.task.appendChild(o); });
+    els.task.value = getParam('task_id'); syncClear();
+}
+
+function chips(items, max, cls = 'chip') {
+    if (!items.length) return '<span class="text-gray-600">–</span>';
+    const shown = items.slice(0, max).map(s => `<span class="${cls}">${escapeHtml(s)}</span>`).join(' ');
+    return shown + (items.length > max ? ` <span class="text-xs text-gray-500">+${items.length - max}</span>` : '');
+}
+
+async function loadHosts() {
+    tbody.innerHTML = loadingRow(8);
+    const f = filters();
+    const qs = Object.entries(f).map(([k, v]) => `${k}=${encodeURIComponent(v || '')}`).join('&');
+    const r = await api(`/api/hosts?${pager.query()}&sort=${sortState.key}&dir=${sortState.dir}&${qs}`);
+    if (!r.ok) { tbody.innerHTML = emptyRow(8, 'fa-triangle-exclamation', errorDetail(r, 'Failed to load hosts')); return; }
+    const d = r.data; hostsCache = d.items || [];
+    pager.update(d);
+    const s = d.summary || {};
+    document.getElementById('stHosts').textContent = fmtNum(s.total);
+    document.getElementById('stUp').textContent = `${fmtNum(s.up)} up · ${fmtNum((s.total || 0) - (s.up || 0))} down`;
+    document.getElementById('stPorts').textContent = fmtNum(s.open_ports);
+    document.getElementById('stNotable').textContent = fmtNum(s.notable);
+    document.getElementById('stHigh').textContent = fmtNum(s.high);
+    document.getElementById('stShown').textContent = fmtNum(d.total);
+    if (!hostsCache.length) {
+        tbody.innerHTML = s.total === 0
+            ? emptyRow(8, 'fa-server', 'No hosts yet. Run a scan task and its hosts will be inventoried here.', '<a href="/tasks" class="text-primary-400 hover:underline text-sm">Go to tasks</a>')
+            : emptyRow(8, 'fa-filter', 'No hosts match these filters.');
+        return;
+    }
+    tbody.innerHTML = hostsCache.map((h, i) => `
+        <tr class="cursor-pointer" data-i="${i}" tabindex="0" aria-label="Open details for ${escapeHtml(h.ip_address)}">
+            <td><div class="flex items-center gap-2">${severityDot(h.max_severity)}<span class="font-mono text-white">${escapeHtml(h.ip_address)}</span>${copyButton(h.ip_address, 'IP')}</div></td>
+            <td class="text-gray-300 truncate max-w-[14rem]">${h.hostname ? escapeHtml(h.hostname) : '<span class="text-gray-600">–</span>'}</td>
+            <td><span class="${h.status === 'up' ? 'badge-green' : 'badge-red'}">${escapeHtml(h.status)}</span></td>
+            <td class="text-right tabular-nums ${h.open_ports ? 'text-white' : 'text-gray-600'}">${h.open_ports}</td>
+            <td class="max-w-[18rem]">${chips(h.services, 4)}</td>
+            <td>${h.notable.length ? h.notable.slice(0, 2).map(p => notableBadge(p.notable)).join(' ') + (h.notable.length > 2 ? ` <span class="text-xs text-gray-500">+${h.notable.length - 2}</span>` : '') : '<span class="text-gray-600">–</span>'}</td>
+            <td class="text-gray-400 text-xs truncate max-w-[12rem]">${h.tasks.map(t => escapeHtml(t.task_name)).join(', ')}</td>
+            <td>${timeCell(h.last_seen)}</td>
+        </tr>`).join('');
+    tbody.querySelectorAll('tr[data-i]').forEach(tr => {
+        const open = () => showHost(hostsCache[+tr.dataset.i].ip_address);
+        tr.addEventListener('click', e => { if (!e.target.closest('button,a')) open(); });
+        tr.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
+    });
+}
+
+async function showHost(ip) {
+    setParams({ ip });
+    openDrawer({ title: `<span class="font-mono">${escapeHtml(ip)}</span>`, subtitle: 'Loading…', body: `<div class="empty"><i class="fas fa-circle-notch fa-spin"></i>Loading host…</div>` });
+    const r = await api(`/api/hosts/${encodeURIComponent(ip)}`);
+    if (!r.ok) { setDrawerBody(`<div class="empty text-red-400"><i class="fas fa-triangle-exclamation"></i>${escapeHtml(errorDetail(r, 'Host not found'))}</div>`); return; }
+    const { host: h, ports, history, present_in_latest } = r.data;
+    document.getElementById('drawerTitle').innerHTML = `<span class="font-mono">${escapeHtml(ip)}</span> ${copyButton(ip, 'IP')} ${h.hostname ? `<span class="text-gray-400 font-normal text-base ml-1">${escapeHtml(h.hostname)}</span>` : ''}`;
+    document.getElementById('drawerSubtitle').innerHTML = `${present_in_latest ? 'Present in latest scans' : '<span class="text-amber-300">Not seen in the latest scans</span>'} · first seen ${relativeTime(h.first_seen)} · last seen ${relativeTime(h.last_seen)}`;
+    const openPorts = ports.filter(p => p.state === 'open');
+    const body = `
+        <div class="flex flex-wrap gap-2">
+            <span class="${h.status === 'up' ? 'badge-green' : 'badge-red'}">${escapeHtml(h.status)}</span>
+            ${h.max_severity ? `<span class="${h.max_severity === 'high' ? 'badge-red' : 'badge-amber'}"><i class="fas fa-shield-halved text-[10px]"></i>${h.max_severity} exposure</span>` : '<span class="badge-gray">no notable services</span>'}
+            ${h.os_info ? `<span class="badge-blue" title="${escapeHtml(h.os_info)}"><i class="fas fa-laptop text-[10px]"></i><span class="max-w-[16rem] truncate">${escapeHtml(h.os_info)}</span></span>` : ''}
+            <span class="badge-gray">${pluralize(openPorts.length, 'open port')}</span>
+        </div>
+
+        <section>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Open ports (current)</h3>
+            ${openPorts.length ? `<div class="card overflow-x-auto"><table class="table"><thead><tr><th>Port</th><th>Service</th><th>Version</th><th>Exposure</th></tr></thead><tbody>
+                ${openPorts.map(p => `<tr><td class="font-mono text-white">${p.port}<span class="text-gray-500">/${escapeHtml(p.protocol)}</span></td><td class="text-gray-200">${escapeHtml(p.service || '-')}</td><td class="text-gray-400 text-xs">${escapeHtml(p.version || '-')}</td><td>${p.notable ? notableBadge(p.notable) : '<span class="text-gray-600">–</span>'}</td></tr>`).join('')}
+            </tbody></table></div>` : '<p class="text-sm text-gray-500">No open ports in the latest scans.</p>'}
+        </section>
+
+        <section>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Scanned by</h3>
+            <div class="flex flex-wrap gap-2">${h.tasks.map(t => `<a href="/reports/${t.report_id}" class="chip hover:border-primary-500 hover:text-white font-sans"><i class="fas fa-crosshairs text-[10px] text-gray-500"></i>${escapeHtml(t.task_name)} <span class="text-gray-500">· report #${t.report_id}</span></a>`).join('')}</div>
+        </section>
+
+        <section>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">History <span class="text-gray-600 font-normal normal-case tracking-normal">· ${pluralize(history.length, 'appearance')}</span></h3>
+            <ol class="relative border-l border-gray-800 ml-2 space-y-4">
+                ${history.map(e => `<li class="ml-4">
+                    <span class="absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full ${e.opened.length || e.closed.length ? 'bg-amber-400' : 'bg-gray-700'} border-2 border-gray-900"></span>
+                    <div class="flex flex-wrap items-baseline gap-x-2 text-sm">
+                        <a href="/reports/${e.report_id}" class="text-white hover:text-primary-400 font-medium">${escapeHtml(e.task_name)}</a>
+                        <span class="text-gray-500 text-xs">report #${e.report_id} · ${escapeHtml(formatDateTime(e.scanned_at))}</span>
+                        <span class="${e.status === 'up' ? 'text-emerald-400' : 'text-red-400'} text-xs">${escapeHtml(e.status)}</span>
+                        <span class="text-gray-400 text-xs">${pluralize(e.open_ports, 'open port')}</span>
+                    </div>
+                    ${e.opened.length || e.closed.length ? `<div class="flex flex-wrap gap-1.5 mt-1.5">
+                        ${e.opened.map(p => `<span class="badge-green">+ ${p.port}/${escapeHtml(p.protocol)}${p.service ? ' ' + escapeHtml(p.service) : ''}</span>`).join('')}
+                        ${e.closed.map(p => `<span class="badge-red">− ${p.port}/${escapeHtml(p.protocol)}${p.service ? ' ' + escapeHtml(p.service) : ''}</span>`).join('')}
+                    </div>` : ''}
+                </li>`).join('')}
+            </ol>
+        </section>`;
+    setDrawerBody(body);
+}
+
+loadTaskOptions();
+loadHosts().then(() => { const ip = getParam('ip'); if (ip) showHost(ip); });
+</script>
+{{template "footer" .}}

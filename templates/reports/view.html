@@ -1,149 +1,203 @@
 <!DOCTYPE html>
 <html lang="en">
 {{template "head" .}}
-<body class="bg-gray-900 text-gray-100 min-h-screen">
+<body>
 {{template "nav" .}}
-<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-<div id="reportView" class="max-w-6xl mx-auto">
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
-        <div>
-            <h1 class="text-2xl font-bold">Scan Report <span id="reportId" class="text-emerald-400">#...</span></h1>
-            <p id="reportTask" class="text-sm mt-1 hidden"><span class="text-gray-400">Task:</span> <a id="reportTaskLink" href="#" class="text-emerald-400 hover:underline"></a></p>
-            <p id="reportMeta" class="text-gray-400 text-sm mt-1"></p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-            <a id="xmlLink" href="#" class="inline-flex items-center bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-code mr-1.5"></i>XML</a>
-            <a id="txtLink" href="#" class="inline-flex items-center bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-file-alt mr-1.5"></i>Text</a>
-            <a id="pdfLink" href="#" class="inline-flex items-center bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded text-sm transition"><i class="fas fa-file-pdf mr-1.5"></i>PDF</a>
-        </div>
-    </div>
 
-    <!-- Summary Cards -->
-    <div id="summaryCards" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6 hidden">
-        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
-            <div class="text-2xl font-bold text-emerald-400" id="totalHosts">0</div>
-            <div class="text-xs text-gray-400 uppercase tracking-wide mt-1">Total Hosts</div>
-        </div>
-        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
-            <div class="text-2xl font-bold text-green-400" id="hostsUp">0</div>
-            <div class="text-xs text-gray-400 uppercase tracking-wide mt-1">Hosts Up</div>
-        </div>
-        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
-            <div class="text-2xl font-bold text-amber-400" id="totalPorts">0</div>
-            <div class="text-xs text-gray-400 uppercase tracking-wide mt-1">Open Ports</div>
-        </div>
-        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
-            <div class="text-2xl font-bold text-blue-400" id="totalServices">0</div>
-            <div class="text-xs text-gray-400 uppercase tracking-wide mt-1">Services</div>
-        </div>
-    </div>
+<nav class="text-sm text-gray-500 mb-4" aria-label="Breadcrumb"><a href="/reports" class="hover:text-white">Reports</a> <span class="mx-1">/</span> <span class="text-gray-300">Report #<span id="crumbId"></span></span></nav>
 
-    <div id="hostsContainer" class="space-y-6"><div class="text-center text-gray-500 py-8">Loading...</div></div>
+<div class="page-header">
+    <div class="min-w-0">
+        <h1 class="page-title">Report <span class="text-primary-400">#<span id="reportId"></span></span></h1>
+        <p class="page-subtitle" id="reportMeta">Loading…</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+        <a id="xmlLink" href="#" class="btn-secondary btn-sm"><i class="fas fa-code"></i>XML</a>
+        <a id="txtLink" href="#" class="btn-secondary btn-sm"><i class="fas fa-file-lines"></i>Text</a>
+        <a id="csvLink" href="#" class="btn-secondary btn-sm" title="All findings as CSV"><i class="fas fa-table"></i>CSV</a>
+        <a id="pdfLink" href="#" class="btn-secondary btn-sm"><i class="fas fa-file-pdf text-red-400"></i>PDF</a>
+    </div>
 </div>
+
+<div id="summaryCards" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 hidden">
+    <div class="card p-4"><div class="text-2xl font-bold text-white tabular-nums" id="totalHosts">0</div><div class="text-xs text-gray-400 uppercase tracking-wide mt-1">Hosts</div></div>
+    <div class="card p-4"><div class="text-2xl font-bold text-emerald-400 tabular-nums" id="hostsUp">0</div><div class="text-xs text-gray-400 uppercase tracking-wide mt-1">Hosts up</div></div>
+    <div class="card p-4"><div class="text-2xl font-bold text-amber-400 tabular-nums" id="totalPorts">0</div><div class="text-xs text-gray-400 uppercase tracking-wide mt-1">Open ports</div></div>
+    <div class="card p-4"><div class="text-2xl font-bold text-blue-400 tabular-nums" id="totalServices">0</div><div class="text-xs text-gray-400 uppercase tracking-wide mt-1">Services</div></div>
+</div>
+
+<!-- Diff panel -->
+<div id="diffPanel" class="card mb-4 hidden">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-code-compare mr-2 text-blue-400"></i>Changes since previous scan</h3>
+        <span class="text-xs text-gray-500" id="diffMeta"></span>
+    </div>
+    <div class="card-body" id="diffBody"></div>
+</div>
+
+<!-- Filter bar -->
+<div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+    <div class="relative flex-1 max-w-sm">
+        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+        <input type="search" id="hostSearch" class="input pl-9" placeholder="Filter hosts by IP, hostname or service…" aria-label="Filter hosts">
+    </div>
+    <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer"><input type="checkbox" id="onlyUp" class="checkbox">Only hosts that are up</label>
+    <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer"><input type="checkbox" id="onlyOpen" class="checkbox" checked>Only open ports</label>
+    <span class="text-xs text-gray-500 sm:ml-auto" id="hostCount"></span>
+</div>
+
+<div id="hostsContainer" class="space-y-4"><div class="empty"><i class="fas fa-circle-notch fa-spin"></i>Loading report…</div></div>
 
 <script>
 const reportId = window.location.pathname.split('/').pop();
+['reportId', 'crumbId'].forEach(id => document.getElementById(id).textContent = reportId);
 document.getElementById('xmlLink').href = `/api/reports/${reportId}/download/xml`;
 document.getElementById('txtLink').href = `/api/reports/${reportId}/download/txt`;
 document.getElementById('pdfLink').href = `/api/reports/${reportId}/download/pdf`;
-document.getElementById('reportId').textContent = '#' + reportId;
+document.getElementById('csvLink').href = `/api/reports/${reportId}/download/csv`;
+let portSort = { key: 'port', dir: 'asc' };
 
-async function loadReport() {
-    const res = await fetch(`/api/reports/${reportId}`, { credentials: 'same-origin' });
-    if (!res.ok) { document.getElementById('hostsContainer').innerHTML = '<div class="text-red-400 text-center py-8">Failed to load report</div>'; return; }
-    const report = await res.json();
+let report = null, diff = null;
+// Lookup tables built from the diff so host cards can mark rows.
+const openedByHost = {}, closedByHost = {}, changedByHost = {}, newHosts = new Set();
+
+const stateCls = { open: 'badge-green', filtered: 'badge-amber', closed: 'badge-gray' };
+const portKey = p => `${p.port}/${p.protocol}`;
+const fmtPort = p => `<span class="font-mono">${p.port}<span class="text-gray-500">/${escapeHtml(p.protocol)}</span></span>${p.service ? ` <span class="text-gray-400">${escapeHtml(p.service)}</span>` : ''}`;
+
+async function load() {
+    const [r, d] = await Promise.all([api(`/api/reports/${reportId}`), api(`/api/reports/${reportId}/diff`)]);
+    if (!r.ok) { document.getElementById('hostsContainer').innerHTML = `<div class="empty text-red-400"><i class="fas fa-triangle-exclamation"></i>${escapeHtml(errorDetail(r, 'Failed to load report'))}</div>`; document.getElementById('reportMeta').textContent = ''; return; }
+    report = r.data; diff = d.ok ? d.data : null;
+
+    const task = report.ScanRun && report.ScanRun.Task;
+    document.getElementById('reportMeta').innerHTML = `${task ? `<a href="/tasks/view/${task.ID}" class="text-primary-400 hover:underline">${escapeHtml(task.Name)}</a> · ` : ''}run <a href="/runs?task_id=${task ? task.ID : ''}" class="text-gray-300 hover:text-white font-mono">#${report.ScanRunID}</a> · generated ${formatDateTime(report.CreatedAt)}${report.Summary ? ` · ${escapeHtml(report.Summary)}` : ''}`;
+    if (task) document.title = `Report #${reportId} · ${task.Name} · NmapWebUI`;
+
     const hosts = report.Hosts || [];
-    const container = document.getElementById('hostsContainer');
-
-    if (report.ScanRun && report.ScanRun.Task) {
-        const task = report.ScanRun.Task;
-        const taskEl = document.getElementById('reportTask');
-        const linkEl = document.getElementById('reportTaskLink');
-        linkEl.href = `/tasks/view/${task.ID}`;
-        linkEl.textContent = task.Name;
-        taskEl.classList.remove('hidden');
-    }
-
-    if (report.CreatedAt) {
-        document.getElementById('reportMeta').textContent = `Generated on ${new Date(report.CreatedAt).toLocaleString()}${report.Summary ? ' \u2022 ' + report.Summary : ''}`;
-    }
-
-    if (hosts.length === 0) {
-        container.innerHTML = '<div class="bg-gray-800 rounded-lg p-8 text-center"><i class="fas fa-search text-4xl text-gray-600 mb-3"></i><p class="text-gray-500">No hosts found in this scan.</p></div>';
-        return;
-    }
-
-    // Summary stats
-    const hostsUp = hosts.filter(h => h.Status === 'up').length;
     const allPorts = hosts.flatMap(h => h.Ports || []);
-    const openPorts = allPorts.filter(p => p.State === 'open');
-    const services = new Set(openPorts.map(p => p.Service).filter(Boolean));
-
+    const open = allPorts.filter(p => p.State === 'open');
     document.getElementById('totalHosts').textContent = hosts.length;
-    document.getElementById('hostsUp').textContent = hostsUp;
-    document.getElementById('totalPorts').textContent = openPorts.length;
-    document.getElementById('totalServices').textContent = services.size;
+    document.getElementById('hostsUp').textContent = hosts.filter(h => h.Status === 'up').length;
+    document.getElementById('totalPorts').textContent = open.length;
+    document.getElementById('totalServices').textContent = new Set(open.map(p => p.Service).filter(Boolean)).size;
     document.getElementById('summaryCards').classList.remove('hidden');
 
-    container.innerHTML = hosts.map((h, idx) => {
-        const ports = h.Ports || [];
-        const openCount = ports.filter(p => p.State === 'open').length;
-        const statusColor = h.Status === 'up' ? 'emerald' : 'red';
+    renderDiff();
+    renderHosts();
+}
+
+function renderDiff() {
+    const panel = document.getElementById('diffPanel');
+    const body = document.getElementById('diffBody');
+    const meta = document.getElementById('diffMeta');
+    if (!diff) return;
+    panel.classList.remove('hidden');
+    if (!diff.has_previous) {
+        meta.textContent = '';
+        body.innerHTML = '<p class="text-sm text-gray-500"><i class="fas fa-circle-info mr-1"></i>This is the first report for this task, so there is nothing to compare against yet.</p>';
+        return;
+    }
+    meta.innerHTML = `vs <a href="/reports/${diff.previous_report_id}" class="text-primary-400 hover:underline">report #${diff.previous_report_id}</a> from ${escapeHtml(formatDateTime(diff.previous_created_at))}`;
+    diff.new_hosts.forEach(h => newHosts.add(h.ip_address));
+    diff.changed_hosts.forEach(h => {
+        openedByHost[h.ip_address] = new Set((h.opened || []).map(portKey));
+        closedByHost[h.ip_address] = h.closed || [];
+        changedByHost[h.ip_address] = Object.fromEntries((h.changed || []).map(c => [`${c.port}/${c.protocol}`, c]));
+    });
+    const s = diff.summary;
+    const total = s.new_hosts + s.removed_hosts + s.status_changes + s.opened_ports + s.closed_ports + s.changed_services;
+    if (!total) {
+        body.innerHTML = '<p class="text-sm text-emerald-300"><i class="fas fa-check-circle mr-1"></i>No changes. Hosts, open ports and detected services are identical to the previous scan.</p>';
+        return;
+    }
+    const stat = (n, label, cls) => `<div class="rounded-md border border-gray-800 bg-gray-950/60 px-3 py-2"><div class="text-xl font-bold tabular-nums ${n ? cls : 'text-gray-500'}">${n > 0 && cls.includes('emerald') ? '+' : ''}${n}</div><div class="text-[11px] uppercase tracking-wide text-gray-500">${label}</div></div>`;
+    let html = `<div class="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+        ${stat(s.opened_ports, 'ports opened', 'text-emerald-400')}${stat(s.closed_ports, 'ports closed', 'text-red-400')}${stat(s.changed_services, 'services changed', 'text-amber-400')}
+        ${stat(s.new_hosts, 'new hosts', 'text-emerald-400')}${stat(s.removed_hosts, 'hosts gone', 'text-red-400')}${stat(s.status_changes, 'status changes', 'text-amber-400')}
+    </div><div class="space-y-3 text-sm">`;
+    const hostLabel = h => `<a href="#host-${encodeURIComponent(h.ip_address)}" class="font-mono text-white hover:text-primary-400">${escapeHtml(h.ip_address)}</a>${h.hostname ? ` <span class="text-gray-500">${escapeHtml(h.hostname)}</span>` : ''}`;
+    diff.new_hosts.forEach(h => { html += `<div class="flex flex-wrap gap-x-2 gap-y-1"><span class="badge-green">new host</span>${hostLabel(h)}${h.open_ports.length ? `<span class="text-gray-400">· ${h.open_ports.map(fmtPort).join(', ')}</span>` : ''}</div>`; });
+    diff.removed_hosts.forEach(h => { html += `<div class="flex flex-wrap gap-x-2 gap-y-1"><span class="badge-red">host gone</span><span class="font-mono text-gray-300">${escapeHtml(h.ip_address)}</span>${h.open_ports.length ? `<span class="text-gray-500">· previously ${h.open_ports.map(fmtPort).join(', ')}</span>` : ''}</div>`; });
+    diff.changed_hosts.forEach(h => {
+        const parts = [];
+        if (h.status_before !== h.status_after) parts.push(`<span class="badge-amber">${escapeHtml(h.status_before)} → ${escapeHtml(h.status_after)}</span>`);
+        (h.opened || []).forEach(p => parts.push(`<span class="badge-green">+ ${fmtPort(p)}</span>`));
+        (h.closed || []).forEach(p => parts.push(`<span class="badge-red">− ${fmtPort(p)}</span>`));
+        (h.changed || []).forEach(c => parts.push(`<span class="badge-amber" title="${escapeHtml(`${c.before.service} ${c.before.version}`.trim())} → ${escapeHtml(`${c.after.service} ${c.after.version}`.trim())}">~ ${c.port}/${escapeHtml(c.protocol)} ${escapeHtml(c.before.service || '?')} → ${escapeHtml(c.after.service || '?')}</span>`));
+        html += `<div class="flex flex-wrap items-center gap-x-2 gap-y-1">${hostLabel(h)}<span class="text-gray-600">·</span>${parts.join(' ')}</div>`;
+    });
+    body.innerHTML = html + '</div>';
+}
+
+function renderHosts() {
+    const container = document.getElementById('hostsContainer');
+    const q = document.getElementById('hostSearch').value.trim().toLowerCase();
+    const onlyUp = document.getElementById('onlyUp').checked;
+    const onlyOpen = document.getElementById('onlyOpen').checked;
+    let hosts = report.Hosts || [];
+    if (onlyUp) hosts = hosts.filter(h => h.Status === 'up');
+    if (q) hosts = hosts.filter(h => h.IPAddress.toLowerCase().includes(q) || (h.Hostname || '').toLowerCase().includes(q) || (h.Ports || []).some(p => (p.Service || '').toLowerCase().includes(q) || String(p.PortNumber) === q));
+    document.getElementById('hostCount').textContent = `${hosts.length} of ${(report.Hosts || []).length} hosts shown`;
+    if (!(report.Hosts || []).length) { container.innerHTML = '<div class="card empty"><i class="fas fa-search"></i><p>No hosts were found in this scan.</p></div>'; return; }
+    if (!hosts.length) { container.innerHTML = '<div class="card empty"><i class="fas fa-filter"></i><p>No hosts match the current filter.</p></div>'; return; }
+
+    container.innerHTML = hosts.map(h => {
+        const up = h.Status === 'up';
+        let ports = h.Ports || [];
+        if (onlyOpen) ports = ports.filter(p => p.State === 'open');
+        const acc = { port: p => p.PortNumber, state: p => p.State, service: p => p.Service || '', version: p => p.Version || '' };
+        ports = sortRows(ports, acc[portSort.key] || acc.port, portSort.dir);
+        const openCount = (h.Ports || []).filter(p => p.State === 'open').length;
+        const opened = openedByHost[h.IPAddress] || new Set();
+        const changed = changedByHost[h.IPAddress] || {};
+        const closed = closedByHost[h.IPAddress] || [];
+        const isNew = newHosts.has(h.IPAddress);
         return `
-        <div class="bg-gray-800 rounded-lg shadow border border-gray-700 overflow-hidden">
-            <div class="px-5 py-4 border-b border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-full bg-${statusColor}-900 border border-${statusColor}-700 flex items-center justify-center">
-                        <i class="fas fa-${h.Status === 'up' ? 'server' : 'times'} text-${statusColor}-400"></i>
-                    </div>
-                    <div>
-                        <h3 class="font-bold text-lg font-mono">${escapeHtml(h.IPAddress)}</h3>
-                        ${h.Hostname ? `<p class="text-sm text-gray-400">${escapeHtml(h.Hostname)}</p>` : ''}
+        <div class="card overflow-hidden" id="host-${encodeURIComponent(h.IPAddress)}">
+            <div class="card-header">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${up ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}"><i class="fas ${up ? 'fa-server' : 'fa-power-off'}"></i></div>
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="font-mono font-semibold text-white">${escapeHtml(h.IPAddress)}</span>${copyButton(h.IPAddress, 'IP')}
+                            <a href="/hosts?ip=${encodeURIComponent(h.IPAddress)}" class="text-xs text-gray-500 hover:text-primary-400" title="Host history"><i class="fas fa-clock-rotate-left"></i></a>
+                            ${isNew ? '<span class="badge-green">new host</span>' : ''}
+                            ${(h.Ports || []).some(p => p.Notable && p.Notable.severity === 'high') ? '<span class="badge-red"><i class="fas fa-triangle-exclamation text-[10px]"></i>high exposure</span>' : (h.Ports || []).some(p => p.Notable) ? '<span class="badge-amber"><i class="fas fa-circle-exclamation text-[10px]"></i>notable</span>' : ''}
+                        </div>
+                        ${h.Hostname ? `<div class="text-xs text-gray-400 truncate">${escapeHtml(h.Hostname)}</div>` : ''}
                     </div>
                 </div>
-                <div class="flex items-center gap-3 text-sm">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${statusColor}-900 text-${statusColor}-300 border border-${statusColor}-700">
-                        <span class="w-1.5 h-1.5 rounded-full bg-${statusColor}-400 mr-1.5"></span>${h.Status.toUpperCase()}
-                    </span>
-                    ${h.OSInfo ? `<span class="text-blue-400 text-xs"><i class="fas fa-laptop mr-1"></i>${escapeHtml(h.OSInfo)}</span>` : ''}
-                    <span class="text-gray-400 text-xs">${openCount} open port${openCount !== 1 ? 's' : ''}</span>
+                <div class="flex flex-wrap items-center gap-2 text-xs">
+                    <span class="${up ? 'badge-green' : 'badge-red'}">${escapeHtml(h.Status)}</span>
+                    ${h.OSInfo ? `<span class="badge-blue" title="${escapeHtml(h.OSInfo)}"><i class="fas fa-laptop"></i><span class="max-w-[14rem] truncate">${escapeHtml(h.OSInfo)}</span></span>` : ''}
+                    <span class="text-gray-400">${pluralize(openCount, 'open port')}</span>
                 </div>
             </div>
-            ${ports.length > 0 ? `
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-gray-750 text-gray-400 text-xs uppercase tracking-wider" style="background: rgba(55,65,81,0.5)">
-                        <tr>
-                            <th class="px-5 py-3 font-medium">Port</th>
-                            <th class="px-5 py-3 font-medium">State</th>
-                            <th class="px-5 py-3 font-medium">Service</th>
-                            <th class="px-5 py-3 font-medium">Version</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-700/50">
-                        ${ports.map(p => {
-                            const stateColor = p.State === 'open' ? 'emerald' : p.State === 'filtered' ? 'amber' : 'gray';
-                            return `
-                            <tr class="hover:bg-gray-700/30 transition-colors">
-                                <td class="px-5 py-2.5 font-mono text-white">${p.PortNumber}<span class="text-gray-500">/${p.Protocol}</span></td>
-                                <td class="px-5 py-2.5">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-${stateColor}-900/50 text-${stateColor}-400 border border-${stateColor}-800/50">
-                                        ${p.State}
-                                    </span>
-                                </td>
-                                <td class="px-5 py-2.5 text-gray-300">${escapeHtml(p.Service || '-')}</td>
-                                <td class="px-5 py-2.5 text-gray-400 text-xs">${escapeHtml(p.Version || '-')}</td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>` : `<div class="px-5 py-4 text-gray-500 text-sm">No port information available</div>`}
+            ${ports.length ? `<div class="table-wrap"><table class="table">
+                <thead><tr><th class="w-36" data-sort="port">Port</th><th class="w-28" data-sort="state">State</th><th data-sort="service">Service</th><th data-sort="version">Version</th><th class="w-44">Exposure</th></tr></thead>
+                <tbody>${ports.map(p => {
+                    const k = `${p.PortNumber}/${p.Protocol}`;
+                    const isOpened = opened.has(k) && !isNew;
+                    const ch = changed[k];
+                    return `<tr class="${isOpened ? 'diff-new' : ''}">
+                        <td class="font-mono text-white">${p.PortNumber}<span class="text-gray-500">/${escapeHtml(p.Protocol)}</span>${isOpened ? ' <span class="badge-green ml-1">new</span>' : ''}</td>
+                        <td><span class="${stateCls[p.State] || 'badge-gray'}">${escapeHtml(p.State)}</span></td>
+                        <td class="text-gray-200">${escapeHtml(p.Service || '-')}${ch ? ` <span class="text-amber-400 text-xs" title="was ${escapeHtml(ch.before.service || '?')}">(was ${escapeHtml(ch.before.service || '?')})</span>` : ''}</td>
+                        <td class="text-gray-400 text-xs">${escapeHtml(p.Version || '-')}${ch && ch.before.version !== ch.after.version ? ` <span class="text-amber-400" title="was ${escapeHtml(ch.before.version || '-')}">(was ${escapeHtml(ch.before.version || '-')})</span>` : ''}</td>
+                        <td>${p.Notable ? notableBadge(p.Notable) : '<span class="text-gray-700">–</span>'}</td>
+                    </tr>`;
+                }).join('')}
+                ${closed.map(p => `<tr class="diff-removed opacity-70"><td class="font-mono text-gray-400 line-through">${p.port}<span class="text-gray-600">/${escapeHtml(p.protocol)}</span> <span class="badge-red ml-1 no-underline">closed</span></td><td><span class="badge-gray">was open</span></td><td class="text-gray-500 line-through">${escapeHtml(p.service || '-')}</td><td class="text-gray-600 text-xs line-through">${escapeHtml(p.version || '-')}</td><td></td></tr>`).join('')}
+                </tbody></table></div>`
+            : `<div class="px-5 py-4 text-sm text-gray-500">${onlyOpen && (h.Ports || []).length ? 'No open ports. Untick "Only open ports" to see filtered and closed ports.' : 'No port information for this host.'}</div>
+               ${closed.length ? `<div class="px-5 pb-4 text-sm text-gray-400">Previously open: ${closed.map(fmtPort).join(', ')}</div>` : ''}`}
         </div>`;
     }).join('');
+    container.querySelectorAll('table').forEach(t => initSortable(t, (key, dir) => { portSort = { key, dir }; renderHosts(); }, portSort));
 }
-function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
-loadReport();
+
+['hostSearch', 'onlyUp', 'onlyOpen'].forEach(id => document.getElementById(id).addEventListener('input', () => report && renderHosts()));
+load();
 </script>
-</main>
-</body>
-</html>
+{{template "footer" .}}

@@ -63,6 +63,66 @@ func checkSchedules(cfg *config.Config) {
 	}
 }
 
+// UserLocation resolves a user's IANA timezone from the DB (UTC on failure).
+func UserLocation(userID uint) *time.Location {
+	return getUserTZ(userID, map[uint]*time.Location{})
+}
+
+// NextRun returns the next time a scheduled task is expected to fire, or nil
+// when the task is not scheduled or its schedule cannot be parsed. The result
+// is in UTC. A task that is already due returns the current time.
+func NextRun(task models.ScanTask, userTZ *time.Location) *time.Time {
+	if !task.IsScheduled {
+		return nil
+	}
+	now := time.Now().In(userTZ)
+	if shouldTrigger(task, userTZ) {
+		t := now.UTC()
+		return &t
+	}
+	var last time.Time
+	if task.ScheduleLastRun != nil {
+		last = task.ScheduleLastRun.In(userTZ)
+	}
+	var next time.Time
+	switch task.ScheduleType {
+	case "daily":
+		next = last.Add(22 * time.Hour)
+	case "weekly":
+		next = last.Add(6 * 24 * time.Hour)
+	case "monthly":
+		next = last.Add(28 * 24 * time.Hour)
+	case "interval":
+		minutes := 60
+		var data map[string]interface{}
+		if task.ScheduleData != "" && json.Unmarshal([]byte(task.ScheduleData), &data) == nil {
+			if m, ok := data["minutes"].(float64); ok {
+				minutes = int(m)
+			}
+		}
+		next = last.Add(time.Duration(minutes) * time.Minute)
+	case "cron":
+		var data map[string]interface{}
+		if task.ScheduleData == "" || json.Unmarshal([]byte(task.ScheduleData), &data) != nil {
+			return nil
+		}
+		expr, _ := data["expression"].(string)
+		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+		schedule, err := parser.Parse(expr)
+		if err != nil {
+			return nil
+		}
+		next = schedule.Next(last)
+	default:
+		return nil
+	}
+	if next.Before(now) {
+		next = now
+	}
+	t := next.UTC()
+	return &t
+}
+
 // getUserTZ resolves a user's IANA timezone from the DB, with a cache.
 func getUserTZ(userID uint, cache map[uint]*time.Location) *time.Location {
 	if loc, ok := cache[userID]; ok {

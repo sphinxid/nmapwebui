@@ -52,18 +52,29 @@ func Init(cfg *config.Config, seed bool) (*gorm.DB, error) {
 	db.Exec("PRAGMA journal_mode=WAL")
 	db.Exec("PRAGMA busy_timeout=5000")
 
-	if err := db.AutoMigrate(
-		&models.User{},
-		&models.TargetGroup{},
-		&models.Target{},
-		&models.ScanTask{},
-		&models.ScanRun{},
-		&models.ScanReport{},
-		&models.HostFinding{},
-		&models.PortFinding{},
-		&models.SystemSettings{},
-	); err != nil {
-		return nil, fmt.Errorf("migrate database: %w", err)
+	// The server and worker both migrate at startup. On a fresh database they
+	// can race and one of them sees "table already exists" from the other's
+	// CREATE; retrying a few times lets the loser observe the finished schema.
+	var migrateErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		migrateErr = db.AutoMigrate(
+			&models.User{},
+			&models.TargetGroup{},
+			&models.Target{},
+			&models.ScanTask{},
+			&models.ScanRun{},
+			&models.ScanReport{},
+			&models.HostFinding{},
+			&models.PortFinding{},
+			&models.SystemSettings{},
+		)
+		if migrateErr == nil {
+			break
+		}
+		time.Sleep(time.Duration(200*(attempt+1)) * time.Millisecond)
+	}
+	if migrateErr != nil {
+		return nil, fmt.Errorf("migrate database: %w", migrateErr)
 	}
 
 	DB = db

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"nmapwebui/internal/db"
 	"nmapwebui/internal/models"
 )
@@ -14,9 +15,9 @@ type TargetInput struct {
 }
 
 type TargetGroupInput struct {
-	Name        string         `json:"name" binding:"required"`
-	Description string         `json:"description"`
-	Targets     []TargetInput  `json:"targets"`
+	Name        string        `json:"name" binding:"required"`
+	Description string        `json:"description"`
+	Targets     []TargetInput `json:"targets"`
 }
 
 func ListTargetGroups(c *gin.Context) {
@@ -80,6 +81,55 @@ func GetTargetGroup(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Target group not found"})
 		return
 	}
+	c.JSON(http.StatusOK, group)
+}
+
+// UpdateTargetGroup replaces a group's name, description and full target list.
+func UpdateTargetGroup(c *gin.Context) {
+	id := c.Param("id")
+	user, _ := c.Get("user")
+	u := user.(models.User)
+
+	var group models.TargetGroup
+	if err := db.DB.Where("id = ? AND user_id = ?", id, u.ID).First(&group).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Target group not found"})
+		return
+	}
+
+	var input TargetGroupInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+
+	err := db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&group).Updates(map[string]interface{}{
+			"name": input.Name, "description": input.Description,
+		}).Error; err != nil {
+			return err
+		}
+		// Hard-delete old targets so re-adding the same value doesn't collide
+		// with a soft-deleted row and so the group doesn't accumulate tombstones.
+		if err := tx.Unscoped().Where("target_group_id = ?", group.ID).Delete(&models.Target{}).Error; err != nil {
+			return err
+		}
+		for _, t := range input.Targets {
+			typeStr := t.TargetType
+			if typeStr == "" {
+				typeStr = "ip"
+			}
+			if err := tx.Create(&models.Target{Value: t.Value, TargetType: typeStr, TargetGroupID: group.ID}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": err.Error()})
+		return
+	}
+
+	db.DB.Preload("Targets").First(&group, group.ID)
 	c.JSON(http.StatusOK, group)
 }
 
